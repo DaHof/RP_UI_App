@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 
 @dataclass
 class TagDetection:
     uid: str
     tag_type: str
+    technologies: List[str]
 
 
 tag_callback = Callable[[TagDetection], None]

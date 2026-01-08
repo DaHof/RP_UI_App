@@ -37,7 +37,11 @@ class AdafruitPN532Reader(BasePN532Reader):
             uid = self._pn532.read_passive_target(timeout=0.2)
             if uid is not None:
                 uid_hex = ":".join(f"{byte:02X}" for byte in uid)
-                detection = TagDetection(uid=uid_hex, tag_type="ISO14443A")
+                detection = TagDetection(
+                    uid=uid_hex,
+                    tag_type="ISO14443A",
+                    technologies=["ISO14443A", "NFC-A"],
+                )
                 self._emit(detection)
                 time.sleep(1.0)
             time.sleep(self._poll_interval)

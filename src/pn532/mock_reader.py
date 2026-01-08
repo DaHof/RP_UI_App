@@ -23,5 +23,6 @@ class MockPN532Reader(BasePN532Reader):
     def simulate_tag(self, uid: str, tag_type: str) -> None:
         if not self._running:
             return
-        detection = TagDetection(uid=uid, tag_type=tag_type)
+        technologies = ["ISO14443A", "NFC-A"] if tag_type else []
+        detection = TagDetection(uid=uid, tag_type=tag_type, technologies=technologies)
         self._emit(detection)

@@ -14,13 +14,14 @@ class App(tk.Tk):
         super().__init__()
         self.title("PN532 Touch UI")
         self.geometry("800x480")
-        self.configure(bg="#111827")
+        self._configure_theme()
+        self.configure(bg=self._colors["bg"])
         self._store = store
         self._on_shutdown = on_shutdown
         self._current_detection: Optional[TagDetection] = None
         self._current_profile: Optional[CardProfile] = None
 
-        self._content = ttk.Frame(self)
+        self._content = ttk.Frame(self, style="App.TFrame")
         self._content.pack(fill=tk.BOTH, expand=True)
 
         self._screens = {}
@@ -37,11 +38,111 @@ class App(tk.Tk):
         self.show_screen("Scan")
 
     def _build_bottom_nav(self) -> None:
-        nav = ttk.Frame(self)
+        nav = ttk.Frame(self, style="Nav.TFrame")
         nav.pack(side=tk.BOTTOM, fill=tk.X)
         for label in ["Scan", "Library", "Emulate", "Tools", "Settings"]:
-            button = ttk.Button(nav, text=label, command=lambda name=label: self.show_screen(name))
+            button = ttk.Button(
+                nav,
+                text=label,
+                style="Nav.TButton",
+                command=lambda name=label: self.show_screen(name),
+            )
             button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4, pady=4)
+
+    def _configure_theme(self) -> None:
+        self._colors = {
+            "bg": "#0b1020",
+            "panel": "#121a2f",
+            "panel_alt": "#0f1628",
+            "accent": "#39c6ff",
+            "accent_alt": "#7c5cff",
+            "text": "#e6f1ff",
+            "muted": "#9bb6ff",
+        }
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure("App.TFrame", background=self._colors["bg"])
+        style.configure("Nav.TFrame", background=self._colors["panel_alt"])
+        style.configure("Card.TFrame", background=self._colors["panel"])
+
+        style.configure(
+            "Title.TLabel",
+            background=self._colors["bg"],
+            foreground=self._colors["accent"],
+            font=("Helvetica", 20, "bold"),
+        )
+        style.configure(
+            "Status.TLabel",
+            background=self._colors["bg"],
+            foreground=self._colors["text"],
+            font=("Helvetica", 16, "bold"),
+        )
+        style.configure(
+            "Body.TLabel",
+            background=self._colors["bg"],
+            foreground=self._colors["text"],
+            font=("Helvetica", 13),
+        )
+        style.configure(
+            "Muted.TLabel",
+            background=self._colors["bg"],
+            foreground=self._colors["muted"],
+            font=("Helvetica", 11),
+        )
+
+        style.configure(
+            "Primary.TButton",
+            background=self._colors["accent"],
+            foreground="#0b1020",
+            font=("Helvetica", 12, "bold"),
+            padding=10,
+        )
+        style.map(
+            "Primary.TButton",
+            background=[("active", self._colors["accent_alt"])],
+            foreground=[("active", "#ffffff")],
+        )
+
+        style.configure(
+            "Secondary.TButton",
+            background=self._colors["panel"],
+            foreground=self._colors["text"],
+            font=("Helvetica", 12, "bold"),
+            padding=10,
+        )
+        style.map(
+            "Secondary.TButton",
+            background=[("active", self._colors["panel_alt"])],
+            foreground=[("active", self._colors["accent"])],
+        )
+
+        style.configure(
+            "Nav.TButton",
+            background=self._colors["panel_alt"],
+            foreground=self._colors["text"],
+            font=("Helvetica", 11, "bold"),
+            padding=8,
+        )
+        style.map(
+            "Nav.TButton",
+            background=[("active", self._colors["panel"])],
+            foreground=[("active", self._colors["accent"])],
+        )
+
+        style.configure(
+            "App.TEntry",
+            fieldbackground=self._colors["panel"],
+            background=self._colors["panel"],
+            foreground=self._colors["text"],
+            insertcolor=self._colors["accent"],
+        )
+        style.configure(
+            "App.TMenubutton",
+            background=self._colors["panel"],
+            foreground=self._colors["text"],
+            font=("Helvetica", 11, "bold"),
+        )
 
     def _add_screen(self, name: str, frame: tk.Frame) -> None:
         self._screens[name] = frame
@@ -58,6 +159,8 @@ class App(tk.Tk):
         self._current_detection = detection
         existing = self._store.get_by_uid(detection.uid)
         if existing:
+            if detection.technologies:
+                existing.tech_details["technologies"] = detection.technologies
             existing.touch_seen()
             self._store.upsert(existing)
             self._current_profile = existing
@@ -73,6 +176,7 @@ class App(tk.Tk):
         profile = self._current_profile or CardProfile.new_from_scan(
             uid=self._current_detection.uid,
             tag_type=self._current_detection.tag_type,
+            tech_details={"technologies": self._current_detection.technologies},
         )
         dialog = SaveDialog(self, profile)
         self.wait_window(dialog)
@@ -95,7 +199,7 @@ class App(tk.Tk):
 
 class BaseScreen(ttk.Frame):
     def __init__(self, master: tk.Misc, app: App) -> None:
-        super().__init__(master)
+        super().__init__(master, style="App.TFrame")
         self._app = app
 
 
@@ -106,35 +210,50 @@ class ScanScreen(BaseScreen):
         self._tag_summary = tk.StringVar(value="No tag detected")
         self._tag_details = tk.StringVar(value="")
 
-        status_label = ttk.Label(self, textvariable=self._status, font=("Arial", 20))
+        status_label = ttk.Label(self, textvariable=self._status, style="Title.TLabel")
         status_label.pack(pady=10)
 
-        summary_label = ttk.Label(self, textvariable=self._tag_summary, font=("Arial", 16))
+        summary_label = ttk.Label(self, textvariable=self._tag_summary, style="Status.TLabel")
         summary_label.pack(pady=6)
 
-        details_label = ttk.Label(self, textvariable=self._tag_details)
+        details_label = ttk.Label(self, textvariable=self._tag_details, style="Muted.TLabel")
         details_label.pack(pady=4)
 
-        actions = ttk.Frame(self)
+        actions = ttk.Frame(self, style="Card.TFrame")
         actions.pack(pady=12)
-        ttk.Button(actions, text="Save to Library", command=self._app.save_current_tag).grid(
-            row=0, column=0, padx=6, pady=6
-        )
-        ttk.Button(actions, text="Read Details", command=self._show_details).grid(
-            row=0, column=1, padx=6, pady=6
-        )
-        ttk.Button(actions, text="Clone/Write", command=self._go_clone).grid(
-            row=1, column=0, padx=6, pady=6
-        )
-        ttk.Button(actions, text="Emulate", command=self._go_emulate).grid(
-            row=1, column=1, padx=6, pady=6
-        )
+        ttk.Button(
+            actions,
+            text="Save to Library",
+            style="Primary.TButton",
+            command=self._app.save_current_tag,
+        ).grid(row=0, column=0, padx=8, pady=8)
+        ttk.Button(
+            actions,
+            text="Read Details",
+            style="Secondary.TButton",
+            command=self._show_details,
+        ).grid(row=0, column=1, padx=8, pady=8)
+        ttk.Button(
+            actions,
+            text="Clone/Write",
+            style="Secondary.TButton",
+            command=self._go_clone,
+        ).grid(row=1, column=0, padx=8, pady=8)
+        ttk.Button(
+            actions,
+            text="Emulate",
+            style="Secondary.TButton",
+            command=self._go_emulate,
+        ).grid(row=1, column=1, padx=8, pady=8)
 
     def on_tag_detected(self, detection: TagDetection, profile: Optional[CardProfile]) -> None:
         self._status.set("Tag detected")
         name = profile.friendly_name if profile else "Unnamed tag"
+        technologies = ", ".join(detection.technologies) if detection.technologies else "Unknown"
         self._tag_summary.set(f"{name} ({detection.tag_type})")
-        self._tag_details.set(f"UID: {detection.uid}")
+        self._tag_details.set(
+            f"Serial: {detection.uid} | Technologies: {technologies}"
+        )
 
     def _show_details(self) -> None:
         self._app.show_screen("Library")
@@ -149,18 +268,33 @@ class ScanScreen(BaseScreen):
 class LibraryScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        self._listbox = tk.Listbox(self, height=8)
+        self._listbox = tk.Listbox(
+            self,
+            height=8,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
         self._listbox.pack(fill=tk.X, padx=10, pady=10)
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
 
         self._detail = tk.StringVar(value="Select a tag to view details")
-        ttk.Label(self, textvariable=self._detail).pack(pady=8)
+        ttk.Label(self, textvariable=self._detail, style="Body.TLabel").pack(pady=8)
 
-        actions = ttk.Frame(self)
+        actions = ttk.Frame(self, style="Card.TFrame")
         actions.pack(pady=8)
-        ttk.Button(actions, text="Emulate", command=self._emulate).grid(row=0, column=0, padx=6)
-        ttk.Button(actions, text="Clone/Write", command=self._clone).grid(row=0, column=1, padx=6)
-        ttk.Button(actions, text="Delete", command=self._delete).grid(row=0, column=2, padx=6)
+        ttk.Button(actions, text="Emulate", style="Primary.TButton", command=self._emulate).grid(
+            row=0, column=0, padx=8, pady=6
+        )
+        ttk.Button(actions, text="Clone/Write", style="Secondary.TButton", command=self._clone).grid(
+            row=0, column=1, padx=8, pady=6
+        )
+        ttk.Button(actions, text="Delete", style="Secondary.TButton", command=self._delete).grid(
+            row=0, column=2, padx=8, pady=6
+        )
 
         self._profiles = []
 
@@ -175,10 +309,12 @@ class LibraryScreen(BaseScreen):
             return
         index = self._listbox.curselection()[0]
         profile = self._profiles[index]
+        technologies = ", ".join(profile.tech_details.get("technologies", [])) or "Unknown"
         detail = (
             f"Name: {profile.friendly_name}\n"
             f"UID: {profile.uid}\n"
             f"Type: {profile.tag_type}\n"
+            f"Technologies: {technologies}\n"
             f"Last seen: {profile.timestamps.last_seen_at}"
         )
         self._detail.set(detail)
@@ -202,18 +338,22 @@ class EmulateScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         self._status = tk.StringVar(value="Pick a tag from the Library")
-        ttk.Label(self, textvariable=self._status, font=("Arial", 16)).pack(pady=12)
+        ttk.Label(self, textvariable=self._status, style="Status.TLabel").pack(pady=12)
 
-        method_frame = ttk.Frame(self)
+        method_frame = ttk.Frame(self, style="Card.TFrame")
         method_frame.pack(pady=8)
-        ttk.Label(method_frame, text="Method:").pack(side=tk.LEFT, padx=6)
+        ttk.Label(method_frame, text="Method:", style="Body.TLabel").pack(side=tk.LEFT, padx=6)
         self._method = tk.StringVar(value="Auto")
-        ttk.OptionMenu(method_frame, self._method, "Auto", "Auto", "NDEF", "Raw").pack(side=tk.LEFT)
+        ttk.OptionMenu(
+            method_frame, self._method, "Auto", "Auto", "NDEF", "Raw", style="App.TMenubutton"
+        ).pack(side=tk.LEFT)
 
         self._capability = tk.StringVar(value="Select a tag to see capabilities")
-        ttk.Label(self, textvariable=self._capability).pack(pady=6)
+        ttk.Label(self, textvariable=self._capability, style="Muted.TLabel").pack(pady=6)
 
-        ttk.Button(self, text="Start Emulation", command=self._start).pack(pady=12)
+        ttk.Button(self, text="Start Emulation", style="Primary.TButton", command=self._start).pack(
+            pady=12
+        )
 
     def refresh(self) -> None:
         profile = self._app.current_profile()
@@ -230,18 +370,22 @@ class EmulateScreen(BaseScreen):
 class ToolsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="Tools", font=("Arial", 16)).pack(pady=10)
+        ttk.Label(self, text="Tools", style="Title.TLabel").pack(pady=10)
 
-        self._uid_entry = ttk.Entry(self)
+        self._uid_entry = ttk.Entry(self, style="App.TEntry")
         self._uid_entry.insert(0, "04:AB:CD:EF")
         self._uid_entry.pack(pady=6)
 
-        self._type_entry = ttk.Entry(self)
+        self._type_entry = ttk.Entry(self, style="App.TEntry")
         self._type_entry.insert(0, "NTAG213")
         self._type_entry.pack(pady=6)
 
-        ttk.Button(self, text="Simulate Tag", command=self._simulate).pack(pady=6)
-        ttk.Button(self, text="Shutdown", command=self._app.shutdown).pack(pady=6)
+        ttk.Button(self, text="Simulate Tag", style="Secondary.TButton", command=self._simulate).pack(
+            pady=6
+        )
+        ttk.Button(self, text="Shutdown", style="Secondary.TButton", command=self._app.shutdown).pack(
+            pady=6
+        )
 
     def _simulate(self) -> None:
         uid = self._uid_entry.get().strip()
@@ -254,19 +398,24 @@ class ToolsScreen(BaseScreen):
 class SettingsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="Settings", font=("Arial", 16)).pack(pady=10)
+        ttk.Label(self, text="Settings", style="Title.TLabel").pack(pady=10)
 
-        conn_frame = ttk.Frame(self)
+        conn_frame = ttk.Frame(self, style="Card.TFrame")
         conn_frame.pack(pady=8)
-        ttk.Label(conn_frame, text="Connection mode:").pack(side=tk.LEFT, padx=6)
+        ttk.Label(conn_frame, text="Connection mode:", style="Body.TLabel").pack(
+            side=tk.LEFT, padx=6
+        )
         self._conn_mode = tk.StringVar(value="I2C")
-        ttk.OptionMenu(conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART").pack(side=tk.LEFT)
+        ttk.OptionMenu(
+            conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
+        ).pack(side=tk.LEFT)
 
 
 class SaveDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, profile: CardProfile) -> None:
         super().__init__(master)
         self.title("Save Tag")
+        self.configure(bg="#0b1020")
         self.result: Optional[CardProfile] = None
         self._profile = profile
 
@@ -274,19 +423,29 @@ class SaveDialog(tk.Toplevel):
         self._category_var = tk.StringVar(value=profile.category or "")
         self._notes_var = tk.StringVar(value=profile.notes or "")
 
-        ttk.Label(self, text="Friendly name").pack(pady=4)
-        ttk.Entry(self, textvariable=self._name_var).pack(fill=tk.X, padx=10)
+        ttk.Label(self, text="Friendly name", style="Body.TLabel").pack(pady=4)
+        ttk.Entry(self, textvariable=self._name_var, style="App.TEntry").pack(
+            fill=tk.X, padx=10
+        )
 
-        ttk.Label(self, text="Category").pack(pady=4)
-        ttk.Entry(self, textvariable=self._category_var).pack(fill=tk.X, padx=10)
+        ttk.Label(self, text="Category", style="Body.TLabel").pack(pady=4)
+        ttk.Entry(self, textvariable=self._category_var, style="App.TEntry").pack(
+            fill=tk.X, padx=10
+        )
 
-        ttk.Label(self, text="Notes").pack(pady=4)
-        ttk.Entry(self, textvariable=self._notes_var).pack(fill=tk.X, padx=10)
+        ttk.Label(self, text="Notes", style="Body.TLabel").pack(pady=4)
+        ttk.Entry(self, textvariable=self._notes_var, style="App.TEntry").pack(
+            fill=tk.X, padx=10
+        )
 
-        actions = ttk.Frame(self)
+        actions = ttk.Frame(self, style="Card.TFrame")
         actions.pack(pady=10)
-        ttk.Button(actions, text="Save", command=self._save).grid(row=0, column=0, padx=6)
-        ttk.Button(actions, text="Cancel", command=self.destroy).grid(row=0, column=1, padx=6)
+        ttk.Button(actions, text="Save", style="Primary.TButton", command=self._save).grid(
+            row=0, column=0, padx=6
+        )
+        ttk.Button(actions, text="Cancel", style="Secondary.TButton", command=self.destroy).grid(
+            row=0, column=1, padx=6
+        )
 
     def _save(self) -> None:
         self._profile.friendly_name = self._name_var.get().strip() or self._profile.friendly_name
