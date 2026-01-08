@@ -21,13 +21,21 @@ class App(tk.Tk):
         self._current_detection: Optional[TagDetection] = None
         self._current_profile: Optional[CardProfile] = None
 
-        self._content = ttk.Frame(self, style="App.TFrame")
-        self._content.pack(fill=tk.BOTH, expand=True)
+        layout = ttk.Frame(self, style="App.TFrame")
+        layout.pack(fill=tk.BOTH, expand=True)
+        layout.columnconfigure(1, weight=1)
+        layout.rowconfigure(0, weight=1)
+
+        self._nav = ttk.Frame(layout, style="Nav.TFrame")
+        self._nav.grid(row=0, column=0, sticky="ns")
+
+        self._content = ttk.Frame(layout, style="App.TFrame")
+        self._content.grid(row=0, column=1, sticky="nsew")
 
         self._screens = {}
         self._current_screen = None
 
-        self._build_bottom_nav()
+        self._build_left_nav()
 
         self._add_screen("Scan", ScanScreen(self._content, self))
         self._add_screen("Library", LibraryScreen(self._content, self))
@@ -37,27 +45,26 @@ class App(tk.Tk):
 
         self.show_screen("Scan")
 
-    def _build_bottom_nav(self) -> None:
-        nav = ttk.Frame(self, style="Nav.TFrame")
-        nav.pack(side=tk.BOTTOM, fill=tk.X)
+    def _build_left_nav(self) -> None:
+        ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 12))
         for label in ["Scan", "Library", "Emulate", "Tools", "Settings"]:
             button = ttk.Button(
-                nav,
+                self._nav,
                 text=label,
                 style="Nav.TButton",
                 command=lambda name=label: self.show_screen(name),
             )
-            button.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=4, pady=4)
+            button.pack(fill=tk.X, padx=12, pady=6)
 
     def _configure_theme(self) -> None:
         self._colors = {
-            "bg": "#0b1020",
-            "panel": "#121a2f",
-            "panel_alt": "#0f1628",
-            "accent": "#39c6ff",
-            "accent_alt": "#7c5cff",
-            "text": "#e6f1ff",
-            "muted": "#9bb6ff",
+            "bg": "#0b120b",
+            "panel": "#0f1b0f",
+            "panel_alt": "#0b150b",
+            "accent": "#69ff5a",
+            "accent_alt": "#2fd05a",
+            "text": "#d7ffd7",
+            "muted": "#57b857",
         }
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -67,48 +74,54 @@ class App(tk.Tk):
         style.configure("Card.TFrame", background=self._colors["panel"])
 
         style.configure(
+            "NavTitle.TLabel",
+            background=self._colors["panel_alt"],
+            foreground=self._colors["accent"],
+            font=("Courier", 16, "bold"),
+        )
+        style.configure(
             "Title.TLabel",
             background=self._colors["bg"],
             foreground=self._colors["accent"],
-            font=("Helvetica", 20, "bold"),
+            font=("Courier", 20, "bold"),
         )
         style.configure(
             "Status.TLabel",
             background=self._colors["bg"],
             foreground=self._colors["text"],
-            font=("Helvetica", 16, "bold"),
+            font=("Courier", 16, "bold"),
         )
         style.configure(
             "Body.TLabel",
             background=self._colors["bg"],
             foreground=self._colors["text"],
-            font=("Helvetica", 13),
+            font=("Courier", 12),
         )
         style.configure(
             "Muted.TLabel",
             background=self._colors["bg"],
             foreground=self._colors["muted"],
-            font=("Helvetica", 11),
+            font=("Courier", 10),
         )
 
         style.configure(
             "Primary.TButton",
             background=self._colors["accent"],
-            foreground="#0b1020",
-            font=("Helvetica", 12, "bold"),
+            foreground="#0b120b",
+            font=("Courier", 12, "bold"),
             padding=10,
         )
         style.map(
             "Primary.TButton",
             background=[("active", self._colors["accent_alt"])],
-            foreground=[("active", "#ffffff")],
+            foreground=[("active", "#0b120b")],
         )
 
         style.configure(
             "Secondary.TButton",
             background=self._colors["panel"],
             foreground=self._colors["text"],
-            font=("Helvetica", 12, "bold"),
+            font=("Courier", 12, "bold"),
             padding=10,
         )
         style.map(
@@ -121,8 +134,8 @@ class App(tk.Tk):
             "Nav.TButton",
             background=self._colors["panel_alt"],
             foreground=self._colors["text"],
-            font=("Helvetica", 11, "bold"),
-            padding=8,
+            font=("Courier", 12, "bold"),
+            padding=10,
         )
         style.map(
             "Nav.TButton",
@@ -141,7 +154,7 @@ class App(tk.Tk):
             "App.TMenubutton",
             background=self._colors["panel"],
             foreground=self._colors["text"],
-            font=("Helvetica", 11, "bold"),
+            font=("Courier", 11, "bold"),
         )
 
     def _add_screen(self, name: str, frame: tk.Frame) -> None:
@@ -371,21 +384,86 @@ class ToolsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="Tools", style="Title.TLabel").pack(pady=10)
+        self._status = tk.StringVar(value="Select a tool to run.")
+        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
 
-        self._uid_entry = ttk.Entry(self, style="App.TEntry")
+        grid = ttk.Frame(self, style="App.TFrame")
+        grid.pack(fill=tk.X, padx=16, pady=8)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=0,
+            title="Scan",
+            buttons=[
+                ("Scan (Low)", lambda: self._set_status("Low-power scan pending.")),
+                ("Scan (High)", lambda: self._set_status("High-power scan pending.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=1,
+            title="IR",
+            buttons=[
+                ("Send", lambda: self._set_status("IR send not configured yet.")),
+                ("Receive", lambda: self._set_status("IR receive not configured yet.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=0,
+            title="WiFi",
+            buttons=[
+                ("Scan", lambda: self._set_status("WiFi scan not configured yet.")),
+                ("Connect", lambda: self._set_status("WiFi connect not configured yet.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=1,
+            title="System",
+            buttons=[
+                ("Shutdown", self._app.shutdown),
+                ("Reboot", lambda: self._set_status("Reboot not wired yet.")),
+            ],
+        )
+
+        simulate = ttk.Frame(self, style="Card.TFrame")
+        simulate.pack(fill=tk.X, padx=16, pady=12)
+        ttk.Label(simulate, text="Mock Tag", style="Body.TLabel").pack(pady=6)
+        self._uid_entry = ttk.Entry(simulate, style="App.TEntry")
         self._uid_entry.insert(0, "04:AB:CD:EF")
-        self._uid_entry.pack(pady=6)
-
-        self._type_entry = ttk.Entry(self, style="App.TEntry")
+        self._uid_entry.pack(pady=4, padx=8, fill=tk.X)
+        self._type_entry = ttk.Entry(simulate, style="App.TEntry")
         self._type_entry.insert(0, "NTAG213")
-        self._type_entry.pack(pady=6)
+        self._type_entry.pack(pady=4, padx=8, fill=tk.X)
+        ttk.Button(
+            simulate, text="Simulate Tag", style="Secondary.TButton", command=self._simulate
+        ).pack(pady=8)
 
-        ttk.Button(self, text="Simulate Tag", style="Secondary.TButton", command=self._simulate).pack(
-            pady=6
-        )
-        ttk.Button(self, text="Shutdown", style="Secondary.TButton", command=self._app.shutdown).pack(
-            pady=6
-        )
+    def _build_tool_group(
+        self,
+        master: ttk.Frame,
+        row: int,
+        column: int,
+        title: str,
+        buttons: list[tuple[str, Callable[[], None]]],
+    ) -> None:
+        card = ttk.Frame(master, style="Card.TFrame")
+        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        for label, command in buttons:
+            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
+                pady=4, padx=8, fill=tk.X
+            )
+
+    def _set_status(self, message: str) -> None:
+        self._status.set(message)
 
     def _simulate(self) -> None:
         uid = self._uid_entry.get().strip()
@@ -415,7 +493,7 @@ class SaveDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, profile: CardProfile) -> None:
         super().__init__(master)
         self.title("Save Tag")
-        self.configure(bg="#0b1020")
+        self.configure(bg="#0b120b")
         self.result: Optional[CardProfile] = None
         self._profile = profile
 
