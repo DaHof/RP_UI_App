@@ -31,28 +31,38 @@ class App(tk.Tk):
 
         self._content = ttk.Frame(layout, style="App.TFrame")
         self._content.grid(row=0, column=1, sticky="nsew")
+        self._content.rowconfigure(1, weight=1)
+        self._content.columnconfigure(0, weight=1)
+
+        self._subnav = ttk.Frame(self._content, style="Nav.TFrame")
+        self._subnav.grid(row=0, column=0, sticky="ew")
+        self._screen_host = ttk.Frame(self._content, style="App.TFrame")
+        self._screen_host.grid(row=1, column=0, sticky="nsew")
 
         self._screens = {}
         self._current_screen = None
 
         self._build_left_nav()
 
-        self._add_screen("Scan", ScanScreen(self._content, self))
-        self._add_screen("Library", LibraryScreen(self._content, self))
-        self._add_screen("Emulate", EmulateScreen(self._content, self))
-        self._add_screen("Tools", ToolsScreen(self._content, self))
-        self._add_screen("Settings", SettingsScreen(self._content, self))
+        self._add_screen("Scan", ScanScreen(self._screen_host, self))
+        self._add_screen("Library", LibraryScreen(self._screen_host, self))
+        self._add_screen("Emulate", EmulateScreen(self._screen_host, self))
+        self._add_screen("Hardware", ToolsScreen(self._screen_host, self))
+        self._add_screen("Settings", SettingsScreen(self._screen_host, self))
+        self._add_screen("IR", IRScreen(self._screen_host, self))
+        self._add_screen("WiFi", WiFiScreen(self._screen_host, self))
+        self._add_screen("System", SystemScreen(self._screen_host, self))
 
-        self.show_screen("Scan")
+        self.show_section("Scan")
 
     def _build_left_nav(self) -> None:
         ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 12))
-        for label in ["Scan", "Library", "Emulate", "Tools", "Settings"]:
+        for label in ["Scan", "IR", "WiFi", "System"]:
             button = ttk.Button(
                 self._nav,
                 text=label,
                 style="Nav.TButton",
-                command=lambda name=label: self.show_screen(name),
+                command=lambda name=label: self.show_section(name),
             )
             button.pack(fill=tk.X, padx=12, pady=6)
 
@@ -167,6 +177,21 @@ class App(tk.Tk):
         self._current_screen.pack(fill=tk.BOTH, expand=True)
         if hasattr(self._current_screen, "refresh"):
             self._current_screen.refresh()
+
+    def show_section(self, name: str) -> None:
+        for child in self._subnav.winfo_children():
+            child.destroy()
+        if name == "Scan":
+            for label in ["Scan", "Library", "Emulate", "Hardware", "Settings"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: self.show_screen(screen_name),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("Scan")
+        else:
+            self.show_screen(name)
 
     def on_tag_detected(self, detection: TagDetection) -> None:
         self._current_detection = detection
@@ -336,7 +361,7 @@ class LibraryScreen(BaseScreen):
         self._app.show_screen("Emulate")
 
     def _clone(self) -> None:
-        self._app.show_screen("Tools")
+        self._app.show_screen("Hardware")
 
     def _delete(self) -> None:
         if not self._listbox.curselection():
@@ -383,7 +408,7 @@ class EmulateScreen(BaseScreen):
 class ToolsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="Tools", style="Title.TLabel").pack(pady=10)
+        ttk.Label(self, text="Hardware", style="Title.TLabel").pack(pady=10)
         self._status = tk.StringVar(value="Select a tool to run.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
 
@@ -487,6 +512,39 @@ class SettingsScreen(BaseScreen):
         ttk.OptionMenu(
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
+
+
+class IRScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        ttk.Label(self, text="IR", style="Title.TLabel").pack(pady=10)
+        ttk.Label(
+            self,
+            text="IR sender/receiver features will appear here.",
+            style="Body.TLabel",
+        ).pack(pady=6)
+
+
+class WiFiScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        ttk.Label(self, text="WiFi", style="Title.TLabel").pack(pady=10)
+        ttk.Label(
+            self,
+            text="WiFi scan/connect tools will appear here.",
+            style="Body.TLabel",
+        ).pack(pady=6)
+
+
+class SystemScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        ttk.Label(self, text="System", style="Title.TLabel").pack(pady=10)
+        ttk.Label(
+            self,
+            text="System actions will appear here.",
+            style="Body.TLabel",
+        ).pack(pady=6)
 
 
 class SaveDialog(tk.Toplevel):
