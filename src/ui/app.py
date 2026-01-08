@@ -409,13 +409,12 @@ class ToolsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="Hardware", style="Title.TLabel").pack(pady=10)
-        self._status = tk.StringVar(value="Select a tool to run.")
+        self._status = tk.StringVar(value="Scan hardware tools.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
 
         grid = ttk.Frame(self, style="App.TFrame")
         grid.pack(fill=tk.X, padx=16, pady=8)
         grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
 
         self._build_tool_group(
             grid,
@@ -425,36 +424,6 @@ class ToolsScreen(BaseScreen):
             buttons=[
                 ("Scan (Low)", lambda: self._set_status("Low-power scan pending.")),
                 ("Scan (High)", lambda: self._set_status("High-power scan pending.")),
-            ],
-        )
-        self._build_tool_group(
-            grid,
-            row=0,
-            column=1,
-            title="IR",
-            buttons=[
-                ("Send", lambda: self._set_status("IR send not configured yet.")),
-                ("Receive", lambda: self._set_status("IR receive not configured yet.")),
-            ],
-        )
-        self._build_tool_group(
-            grid,
-            row=1,
-            column=0,
-            title="WiFi",
-            buttons=[
-                ("Scan", lambda: self._set_status("WiFi scan not configured yet.")),
-                ("Connect", lambda: self._set_status("WiFi connect not configured yet.")),
-            ],
-        )
-        self._build_tool_group(
-            grid,
-            row=1,
-            column=1,
-            title="System",
-            buttons=[
-                ("Shutdown", self._app.shutdown),
-                ("Reboot", lambda: self._set_status("Reboot not wired yet.")),
             ],
         )
 
