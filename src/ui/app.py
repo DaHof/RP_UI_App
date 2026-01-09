@@ -205,6 +205,19 @@ class App(tk.Tk):
                     command=lambda screen_name=label: self.show_screen(screen_name),
                 ).pack(side=tk.LEFT, padx=6, pady=6)
             self.show_screen("Scan")
+        elif name == "Bluetooth":
+            bluetooth_screen = self._screens["Bluetooth"]
+            for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: bluetooth_screen.show_subscreen(
+                        screen_name
+                    ),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("Bluetooth")
+            bluetooth_screen.show_subscreen("Discovery")
         else:
             self.show_screen(name)
 
@@ -629,10 +642,15 @@ class BluetoothScreen(BaseScreen):
         self._selected_address = tk.StringVar(value="")
         self._selected_type = tk.StringVar(value="")
 
-        self._subnav = ttk.Frame(self, style="Nav.TFrame")
-        self._subnav.pack(fill=tk.X, padx=16, pady=6)
         self._bt_content = ttk.Frame(self, style="App.TFrame")
         self._bt_content.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
+
+        self._target_section = ttk.Frame(self._bt_content, style="Card.TFrame")
+        self._target_section.pack(fill=tk.X, pady=6)
+        self._build_target_section()
+
+        self._bt_screen_host = ttk.Frame(self._bt_content, style="App.TFrame")
+        self._bt_screen_host.pack(fill=tk.BOTH, expand=True)
 
         self._bt_screens = {}
         self._current_bt_screen: Optional[tk.Frame] = None
@@ -643,14 +661,6 @@ class BluetoothScreen(BaseScreen):
         self._add_bt_screen("Audio", self._build_audio_screen())
         self._add_bt_screen("Library", self._build_library_screen())
         self._add_bt_screen("Shortcuts", self._build_shortcuts_screen())
-
-        for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
-            ttk.Button(
-                self._subnav,
-                text=label,
-                style="Small.TButton",
-                command=lambda name=label: self._show_bt_screen(name),
-            ).pack(side=tk.LEFT, padx=4, pady=4)
 
         self._show_bt_screen("Discovery")
 
@@ -663,16 +673,16 @@ class BluetoothScreen(BaseScreen):
         self._current_bt_screen = self._bt_screens[name]
         self._current_bt_screen.pack(fill=tk.BOTH, expand=True)
 
-    def _build_target_section(self, master: ttk.Frame) -> None:
-        target = ttk.Frame(self, style="Card.TFrame")
-        target.pack(fill=tk.X, pady=6)
-        ttk.Label(target, text="Target Device", style="Status.TLabel").pack(pady=(8, 4))
-        self._device_entry = ttk.Entry(target, style="App.TEntry")
+    def show_subscreen(self, name: str) -> None:
+        self._show_bt_screen(name)
+
+    def _build_target_section(self) -> None:
+        self._device_entry = ttk.Entry(self._target_section, style="App.TEntry")
         self._device_entry.insert(0, "AA:BB:CC:DD:EE:FF")
-        self._device_entry.pack(fill=tk.X, padx=8, pady=(0, 8))
+        self._device_entry.pack(fill=tk.X, padx=8, pady=(8, 8))
 
         self._device_list = ttk.Treeview(
-            target,
+            self._target_section,
             columns=("name", "address", "type"),
             show="headings",
             height=4,
@@ -687,8 +697,7 @@ class BluetoothScreen(BaseScreen):
         self._device_list.bind("<<TreeviewSelect>>", self._on_device_select)
 
     def _build_discovery_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
             title="",
@@ -719,11 +728,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_pairing_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Pairing",
+            title="",
             buttons=[
                 ("Pair", self._pair_device),
                 ("Trust", self._trust_device),
@@ -733,11 +741,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_connection_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Connection",
+            title="",
             buttons=[
                 ("Connect", self._connect_audio),
                 ("Disconnect", self._disconnect_audio),
@@ -746,11 +753,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_audio_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Audio",
+            title="",
             buttons=[
                 ("Auto Pair + Play", self._auto_pair_play),
                 ("Test Audio", lambda: self._set_status("Playing test audio.")),
@@ -759,11 +765,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_library_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Library",
+            title="",
             buttons=[
                 ("Save Device", lambda: self._set_status("Saving device profile.")),
                 ("Paired List", self._list_paired),
@@ -772,11 +777,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_shortcuts_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Shortcuts",
+            title="",
             buttons=[
                 ("Last Device", lambda: self._set_status("Connecting last device.")),
                 ("Clear List", self._clear_devices),
@@ -904,10 +908,19 @@ class BluetoothScreen(BaseScreen):
 
     def _list_paired(self) -> None:
         devices = self._client.list_paired()
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         for device in devices:
-            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+            device_type = self._client.device_type(device.address)
+            self._device_list.insert(
+                "", tk.END, values=(device.name, device.address, device_type)
+            )
         self._set_status("Showing paired devices.")
+        if devices:
+            primary = devices[0]
+            self._selected_name.set(primary.name)
+            self._selected_address.set(primary.address)
+            self._selected_type.set(self._client.device_type(primary.address))
 
     def _forget_device(self) -> None:
         address = self._device_address()
@@ -918,7 +931,8 @@ class BluetoothScreen(BaseScreen):
         self._set_status(f"Removed {address}.")
 
     def _clear_devices(self) -> None:
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         self._set_status("Cleared device list.")
 
 
