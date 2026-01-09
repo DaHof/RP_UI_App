@@ -611,9 +611,7 @@ class BluetoothScreen(BaseScreen):
         from bluetooth.bluez_client import BlueZClient
 
         self._client = BlueZClient()
-        ttk.Label(self, text="Bluetooth", style="Title.TLabel").pack(pady=10)
-        self._status = tk.StringVar(value="Pick a Bluetooth tool.")
-        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+        self._status = tk.StringVar(value="")
 
         self._subnav = ttk.Frame(self, style="Nav.TFrame")
         self._subnav.pack(fill=tk.X, padx=16, pady=6)
@@ -755,10 +753,13 @@ class BluetoothScreen(BaseScreen):
         card = ttk.Frame(master, style="Card.TFrame")
         card.pack(fill=tk.X, pady=8)
         ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
-        for label, command in buttons:
-            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
-                pady=4, padx=8, fill=tk.X
-            )
+        button_row = ttk.Frame(card, style="Card.TFrame")
+        button_row.pack(fill=tk.X, padx=8, pady=(0, 8))
+        for index, (label, command) in enumerate(buttons):
+            button_row.columnconfigure(index, weight=1)
+            ttk.Button(
+                button_row, text=label, style="Secondary.TButton", command=command
+            ).grid(row=0, column=index, padx=4, sticky="ew")
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
