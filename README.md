@@ -80,6 +80,13 @@ sudo apt-get update
 sudo apt-get install -y lirc
 ```
 
+### IR wiring (V1221/V1222)
+
+Default wiring targets the following Raspberry Pi pins (configurable in the UI Settings screen):
+
+* Transmitter (V1221): GND → Pin 6 (GND), VCC → Pin 2 (5 V), DAT → GPIO18 (Pin 12)
+* Receiver (V1222): GND → Pin 6 (GND), VCC → Pin 1 (3.3 V), OUT → GPIO23 (Pin 16)
+
 LIRC uses `/etc/lirc/lircd.conf` for remote definitions and `/etc/lirc/lirc_options.conf`
 for device configuration. Once configured, you can list remotes and send commands with:
 
