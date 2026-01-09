@@ -607,9 +607,32 @@ class WiFiScreen(BaseScreen):
 class BluetoothScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
+        from bluetooth.bluez_client import BlueZClient
+
+        self._client = BlueZClient()
         ttk.Label(self, text="Bluetooth", style="Title.TLabel").pack(pady=10)
         self._status = tk.StringVar(value="Pick a Bluetooth tool.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+
+        target = ttk.Frame(self, style="Card.TFrame")
+        target.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(target, text="Target Device", style="Status.TLabel").pack(pady=(8, 4))
+        self._device_entry = ttk.Entry(target, style="App.TEntry")
+        self._device_entry.insert(0, "AA:BB:CC:DD:EE:FF")
+        self._device_entry.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+        self._device_list = tk.Listbox(
+            target,
+            height=4,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._device_list.pack(fill=tk.X, padx=8, pady=(0, 8))
+        self._device_list.bind("<<ListboxSelect>>", self._on_device_select)
 
         grid = ttk.Frame(self, style="App.TFrame")
         grid.pack(fill=tk.X, padx=16, pady=8)
@@ -622,8 +645,8 @@ class BluetoothScreen(BaseScreen):
             column=0,
             title="Discovery",
             buttons=[
-                ("Scan Devices", lambda: self._set_status("Scanning for devices.")),
-                ("Known Devices", lambda: self._set_status("Listing known devices.")),
+                ("Scan Devices", self._scan_devices),
+                ("Known Devices", self._list_known),
             ],
         )
         self._build_tool_group(
@@ -632,8 +655,8 @@ class BluetoothScreen(BaseScreen):
             column=1,
             title="Pairing",
             buttons=[
-                ("Pair", lambda: self._set_status("Pairing to selected device.")),
-                ("Trust", lambda: self._set_status("Trusting selected device.")),
+                ("Pair", self._pair_device),
+                ("Trust", self._trust_device),
             ],
         )
         self._build_tool_group(
@@ -642,7 +665,7 @@ class BluetoothScreen(BaseScreen):
             column=0,
             title="Audio",
             buttons=[
-                ("Connect A2DP", lambda: self._set_status("Connecting audio profile.")),
+                ("Connect A2DP", self._connect_audio),
                 ("Disconnect", lambda: self._set_status("Disconnecting audio.")),
             ],
         )
@@ -652,7 +675,7 @@ class BluetoothScreen(BaseScreen):
             column=1,
             title="Automation",
             buttons=[
-                ("Auto Pair + Play", lambda: self._set_status("Auto pairing and playing.")),
+                ("Auto Pair + Play", self._auto_pair_play),
                 ("Last Device", lambda: self._set_status("Connecting last device.")),
             ],
         )
@@ -675,6 +698,66 @@ class BluetoothScreen(BaseScreen):
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
+
+    def _device_address(self) -> str:
+        return self._device_entry.get().strip()
+
+    def _on_device_select(self, event: tk.Event) -> None:
+        if not self._device_list.curselection():
+            return
+        index = self._device_list.curselection()[0]
+        value = self._device_list.get(index)
+        if value.startswith("[") and "]" in value:
+            address = value.split("]", 1)[0].strip("[] ")
+            self._device_entry.delete(0, tk.END)
+            self._device_entry.insert(0, address)
+
+    def _scan_devices(self) -> None:
+        self._set_status("Scanning for devices...")
+        devices = self._client.scan()
+        self._device_list.delete(0, tk.END)
+        for device in devices:
+            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+        self._set_status(f"Found {len(devices)} device(s).")
+
+    def _list_known(self) -> None:
+        devices = self._client.scan(timeout_s=1)
+        self._device_list.delete(0, tk.END)
+        for device in devices:
+            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+        self._set_status("Showing known devices.")
+
+    def _pair_device(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.pair(address)
+        self._set_status(f"Paired with {address}.")
+
+    def _trust_device(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.trust(address)
+        self._set_status(f"Trusted {address}.")
+
+    def _connect_audio(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.connect_a2dp(address)
+        self._set_status(f"Connected audio to {address}.")
+
+    def _auto_pair_play(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.auto_pair_and_play(address)
+        self._set_status(f"Auto paired and connected {address}.")
 
 
 class SystemScreen(BaseScreen):

@@ -1,3 +1,5 @@
 adafruit-circuitpython-pn532
 adafruit-blinka
 lgpio
+# NOTE: Bluetooth (BlueZ) and IR (LIRC) dependencies are system packages,
+# install via apt (see README).
