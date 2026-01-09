@@ -675,7 +675,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Discovery",
+            title="",
             buttons=[
                 ("Scan Devices", self._scan_devices),
                 ("Known Devices", self._list_known),
@@ -683,7 +683,7 @@ class BluetoothScreen(BaseScreen):
         )
         self._build_button_card(
             frame,
-            title="Bluetooth Power",
+            title="",
             buttons=[
                 ("Power On", self._power_on),
                 ("Power Off", self._power_off),
@@ -691,14 +691,13 @@ class BluetoothScreen(BaseScreen):
         )
         details = ttk.Frame(frame, style="Card.TFrame")
         details.pack(fill=tk.X, pady=8)
-        ttk.Label(details, text="Selected Device", style="Status.TLabel").pack(pady=(8, 4))
         ttk.Label(details, textvariable=self._selected_name, style="Body.TLabel").pack(pady=2)
         ttk.Label(details, textvariable=self._selected_address, style="Muted.TLabel").pack(
             pady=(0, 6)
         )
         self._build_button_card(
             details,
-            title="Actions",
+            title="",
             buttons=[
                 ("Pair", self._pair_device),
                 ("Trust", self._trust_device),
@@ -779,9 +778,10 @@ class BluetoothScreen(BaseScreen):
     ) -> None:
         card = ttk.Frame(master, style="Card.TFrame")
         card.pack(fill=tk.X, pady=8)
-        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        if title:
+            ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
         button_row = ttk.Frame(card, style="Card.TFrame")
-        button_row.pack(fill=tk.X, padx=8, pady=(0, 8))
+        button_row.pack(fill=tk.X, padx=8, pady=8)
         for index, (label, command) in enumerate(buttons):
             button_row.columnconfigure(index, weight=1)
             ttk.Button(
