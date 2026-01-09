@@ -713,6 +713,44 @@ class IRScreen(BaseScreen):
         ).pack(side=tk.LEFT, padx=4)
         return frame
 
+        captures = ttk.Frame(self, style="Card.TFrame")
+        captures.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
+        self._capture_list = tk.Listbox(
+            captures,
+            height=5,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
+        ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+
+        debug = ttk.Frame(self, style="Card.TFrame")
+        debug.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
+        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
+        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Button(
+            debug_buttons,
+            text="Check Pins",
+            style="Secondary.TButton",
+            command=self._check_pins,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            debug_buttons,
+            text="Mark OK",
+            style="Secondary.TButton",
+            command=lambda: self._debug_status.set("IR debug status: OK."),
+        ).pack(side=tk.LEFT, padx=4)
+
     def _build_tool_group(
         self,
         master: ttk.Frame,
