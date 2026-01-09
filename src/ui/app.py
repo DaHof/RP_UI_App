@@ -20,6 +20,8 @@ class App(tk.Tk):
         self._on_shutdown = on_shutdown
         self._current_detection: Optional[TagDetection] = None
         self._current_profile: Optional[CardProfile] = None
+        self._ir_tx_pin = tk.StringVar(value="GPIO18 (Pin 12)")
+        self._ir_rx_pin = tk.StringVar(value="GPIO23 (Pin 16)")
 
         layout = ttk.Frame(self, style="App.TFrame")
         layout.pack(fill=tk.BOTH, expand=True)
@@ -205,6 +207,30 @@ class App(tk.Tk):
                     command=lambda screen_name=label: self.show_screen(screen_name),
                 ).pack(side=tk.LEFT, padx=6, pady=6)
             self.show_screen("Scan")
+        elif name == "IR":
+            ir_screen = self._screens["IR"]
+            for label in ["Capture", "Library", "Remote", "Learn/Pair", "Send", "Settings"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: ir_screen.show_subscreen(screen_name),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("IR")
+            ir_screen.show_subscreen("Capture")
+        elif name == "Bluetooth":
+            bluetooth_screen = self._screens["Bluetooth"]
+            for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: bluetooth_screen.show_subscreen(
+                        screen_name
+                    ),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("Bluetooth")
+            bluetooth_screen.show_subscreen("Discovery")
         else:
             self.show_screen(name)
 
@@ -248,6 +274,16 @@ class App(tk.Tk):
     def shutdown(self) -> None:
         self._on_shutdown()
         self.destroy()
+
+    def ir_tx_pin(self) -> str:
+        return self._ir_tx_pin.get()
+
+    def ir_rx_pin(self) -> str:
+        return self._ir_rx_pin.get()
+
+    def set_ir_pins(self, tx_pin: str, rx_pin: str) -> None:
+        self._ir_tx_pin.set(tx_pin)
+        self._ir_rx_pin.set(rx_pin)
 
 
 class BaseScreen(ttk.Frame):
@@ -498,113 +534,251 @@ class SettingsScreen(BaseScreen):
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
 
+        ir_frame = ttk.Frame(self, style="Card.TFrame")
+        ir_frame.pack(pady=8, padx=16, fill=tk.X)
+        ttk.Label(ir_frame, text="IR GPIO Pins", style="Status.TLabel").pack(pady=(8, 4))
+        pin_row = ttk.Frame(ir_frame, style="Card.TFrame")
+        pin_row.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Label(pin_row, text="TX:", style="Body.TLabel").grid(row=0, column=0, padx=4)
+        self._ir_tx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_tx_entry.insert(0, self._app.ir_tx_pin())
+        self._ir_tx_entry.grid(row=0, column=1, padx=4, sticky="ew")
+        ttk.Label(pin_row, text="RX:", style="Body.TLabel").grid(row=0, column=2, padx=4)
+        self._ir_rx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_rx_entry.insert(0, self._app.ir_rx_pin())
+        self._ir_rx_entry.grid(row=0, column=3, padx=4, sticky="ew")
+        pin_row.columnconfigure(1, weight=1)
+        pin_row.columnconfigure(3, weight=1)
+        ttk.Button(
+            ir_frame,
+            text="Save IR Pins",
+            style="Secondary.TButton",
+            command=self._save_ir_pins,
+        ).pack(pady=(0, 8))
+
+    def _save_ir_pins(self) -> None:
+        tx_pin = self._ir_tx_entry.get().strip() or self._app.ir_tx_pin()
+        rx_pin = self._ir_rx_entry.get().strip() or self._app.ir_rx_pin()
+        self._app.set_ir_pins(tx_pin, rx_pin)
+
 
 class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="IR", style="Title.TLabel").pack(pady=10)
         self._status = tk.StringVar(value="Pick an IR tool.")
-        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+        self._debug_status = tk.StringVar(value="Debug ready.")
+        self._captures: list[dict[str, str]] = []
+        self._capture_detail = tk.StringVar(value="No captures yet.")
+        status_row = ttk.Frame(self, style="App.TFrame")
+        status_row.pack(fill=tk.X, padx=16, pady=(10, 4))
+        ttk.Label(status_row, text="IR", style="Title.TLabel").pack(side=tk.LEFT)
+        ttk.Label(status_row, textvariable=self._status, style="Muted.TLabel").pack(
+            side=tk.LEFT, padx=12
+        )
 
-        wiring = ttk.Frame(self, style="Card.TFrame")
-        wiring.pack(fill=tk.X, padx=16, pady=6)
-        ttk.Label(wiring, text="Hardware Wiring", style="Status.TLabel").pack(pady=(8, 4))
-        ttk.Label(
-            wiring,
-            text="Receiver (V1222): OUT → GPIO (input), VCC → 5V/3.3V, GND → GND",
-            style="Body.TLabel",
-        ).pack(pady=2, padx=8, anchor="w")
-        ttk.Label(
-            wiring,
-            text="Transmitter (V1221): DATA → GPIO (output), VCC → 5V/3.3V, GND → GND",
-            style="Body.TLabel",
-        ).pack(pady=(0, 6), padx=8, anchor="w")
+        self._ir_screen_host = ttk.Frame(self, style="App.TFrame")
+        self._ir_screen_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
 
-        grid = ttk.Frame(self, style="App.TFrame")
-        grid.pack(fill=tk.X, padx=16, pady=8)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
+        self._ir_screens: dict[str, tk.Frame] = {}
+        self._current_ir_screen: Optional[tk.Frame] = None
 
+        self._add_ir_screen("Capture", self._build_capture_screen())
+        self._add_ir_screen("Library", self._build_library_screen())
+        self._add_ir_screen("Remote", self._build_remote_screen())
+        self._add_ir_screen("Learn/Pair", self._build_learn_screen())
+        self._add_ir_screen("Send", self._build_send_screen())
+        self._add_ir_screen("Settings", self._build_settings_screen())
+
+        self._show_ir_screen("Capture")
+
+    def _add_ir_screen(self, name: str, frame: tk.Frame) -> None:
+        self._ir_screens[name] = frame
+
+    def _show_ir_screen(self, name: str) -> None:
+        if self._current_ir_screen:
+            self._current_ir_screen.pack_forget()
+        self._current_ir_screen = self._ir_screens[name]
+        self._current_ir_screen.pack(fill=tk.BOTH, expand=True)
+
+    def show_subscreen(self, name: str) -> None:
+        self._show_ir_screen(name)
+
+    def _build_capture_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=0,
-            column=0,
+            frame,
             title="Capture",
             buttons=[
-                ("Start Capture", lambda: self._set_status("Listening for IR signals.")),
-                ("Recent Captures", lambda: self._set_status("Showing recent captures.")),
+                ("Start Capture", self._start_capture),
+                ("Recent Captures", self._show_recent_captures),
                 ("Save to Library", lambda: self._set_status("Save current capture.")),
             ],
         )
+
+        captures = ttk.Frame(frame, style="Card.TFrame")
+        captures.pack(fill=tk.X, pady=6)
+        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
+        self._capture_list = tk.Listbox(
+            captures,
+            height=5,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
+        ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+        return frame
+
+    def _build_library_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=0,
-            column=1,
+            frame,
             title="Library",
             buttons=[
                 ("Browse Signals", lambda: self._set_status("Browse saved IR signals.")),
                 ("Send Selected", lambda: self._set_status("Send selected IR signal.")),
             ],
         )
+        return frame
+
+    def _build_remote_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=1,
-            column=0,
+            frame,
             title="Remote",
             buttons=[
                 ("Pick Device", lambda: self._set_status("Select a device profile.")),
                 ("Favorites", lambda: self._set_status("Open favorite buttons.")),
             ],
         )
+        return frame
+
+    def _build_learn_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=1,
-            column=1,
+            frame,
             title="Learn / Pair",
             buttons=[
                 ("Guided Learn", lambda: self._set_status("Start guided learning.")),
                 ("Edit Profile", lambda: self._set_status("Edit device mappings.")),
             ],
         )
+        return frame
+
+    def _build_send_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=2,
-            column=0,
+            frame,
             title="Send",
             buttons=[
                 ("Protocol Send", lambda: self._set_status("Send by protocol.")),
                 ("Raw Send", lambda: self._set_status("Send raw timings.")),
             ],
         )
+        return frame
+
+    def _build_settings_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=2,
-            column=1,
+            frame,
             title="Settings",
             buttons=[
                 ("IR Hardware", lambda: self._set_status("Open IR settings.")),
                 ("Import/Export", lambda: self._set_status("Import or export signals.")),
             ],
         )
+        debug = ttk.Frame(frame, style="Card.TFrame")
+        debug.pack(fill=tk.X, pady=6)
+        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
+        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
+        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Button(
+            debug_buttons,
+            text="Check Pins",
+            style="Secondary.TButton",
+            command=self._check_pins,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            debug_buttons,
+            text="Mark OK",
+            style="Secondary.TButton",
+            command=lambda: self._debug_status.set("IR debug status: OK."),
+        ).pack(side=tk.LEFT, padx=4)
+        return frame
 
     def _build_tool_group(
         self,
         master: ttk.Frame,
-        row: int,
-        column: int,
         title: str,
         buttons: list[tuple[str, Callable[[], None]]],
     ) -> None:
         card = ttk.Frame(master, style="Card.TFrame")
-        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        card.pack(fill=tk.X, pady=6)
         ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
-        for label, command in buttons:
-            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
-                pady=4, padx=8, fill=tk.X
-            )
+        button_row = ttk.Frame(card, style="Card.TFrame")
+        button_row.pack(fill=tk.X, padx=8, pady=8)
+        for index, (label, command) in enumerate(buttons):
+            button_row.columnconfigure(index, weight=1)
+            ttk.Button(
+                button_row, text=label, style="Small.TButton", command=command
+            ).grid(row=0, column=index, padx=4, sticky="ew")
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
+
+    def _start_capture(self) -> None:
+        self._set_status("Listening for IR signals.")
+        self._add_capture(
+            name="Capture",
+            protocol="NEC",
+            data="0x20DF10EF",
+            source="GPIO23",
+        )
+
+    def _show_recent_captures(self) -> None:
+        if not self._captures:
+            self._add_capture(
+                name="Recent",
+                protocol="RC5",
+                data="0x1FE4",
+                source="GPIO23",
+            )
+        self._set_status("Showing recent captures.")
+
+    def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
+        capture = {
+            "name": name,
+            "protocol": protocol,
+            "data": data,
+            "source": source,
+        }
+        self._captures.append(capture)
+        self._capture_list.insert(tk.END, f"{name} ({protocol}) {data}")
+        self._capture_list.selection_clear(0, tk.END)
+        self._capture_list.selection_set(tk.END)
+        self._capture_list.event_generate("<<ListboxSelect>>")
+
+    def _on_capture_select(self, event: tk.Event) -> None:
+        if not self._capture_list.curselection():
+            return
+        index = self._capture_list.curselection()[0]
+        capture = self._captures[index]
+        detail = (
+            f"Protocol: {capture['protocol']} | Data: {capture['data']} | Source: {capture['source']}"
+        )
+        self._capture_detail.set(detail)
+
+    def _check_pins(self) -> None:
+        tx_pin = self._app.ir_tx_pin()
+        rx_pin = self._app.ir_rx_pin()
+        self._debug_status.set(f"IR pins set to TX: {tx_pin}, RX: {rx_pin}.")
 
 
 class WiFiScreen(BaseScreen):
@@ -629,10 +803,15 @@ class BluetoothScreen(BaseScreen):
         self._selected_address = tk.StringVar(value="")
         self._selected_type = tk.StringVar(value="")
 
-        self._subnav = ttk.Frame(self, style="Nav.TFrame")
-        self._subnav.pack(fill=tk.X, padx=16, pady=6)
         self._bt_content = ttk.Frame(self, style="App.TFrame")
         self._bt_content.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
+
+        self._target_section = ttk.Frame(self._bt_content, style="Card.TFrame")
+        self._target_section.pack(fill=tk.X, pady=6)
+        self._build_target_section()
+
+        self._bt_screen_host = ttk.Frame(self._bt_content, style="App.TFrame")
+        self._bt_screen_host.pack(fill=tk.BOTH, expand=True)
 
         self._bt_screens = {}
         self._current_bt_screen: Optional[tk.Frame] = None
@@ -643,14 +822,6 @@ class BluetoothScreen(BaseScreen):
         self._add_bt_screen("Audio", self._build_audio_screen())
         self._add_bt_screen("Library", self._build_library_screen())
         self._add_bt_screen("Shortcuts", self._build_shortcuts_screen())
-
-        for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
-            ttk.Button(
-                self._subnav,
-                text=label,
-                style="Small.TButton",
-                command=lambda name=label: self._show_bt_screen(name),
-            ).pack(side=tk.LEFT, padx=4, pady=4)
 
         self._show_bt_screen("Discovery")
 
@@ -663,16 +834,16 @@ class BluetoothScreen(BaseScreen):
         self._current_bt_screen = self._bt_screens[name]
         self._current_bt_screen.pack(fill=tk.BOTH, expand=True)
 
-    def _build_target_section(self, master: ttk.Frame) -> None:
-        target = ttk.Frame(self, style="Card.TFrame")
-        target.pack(fill=tk.X, pady=6)
-        ttk.Label(target, text="Target Device", style="Status.TLabel").pack(pady=(8, 4))
-        self._device_entry = ttk.Entry(target, style="App.TEntry")
+    def show_subscreen(self, name: str) -> None:
+        self._show_bt_screen(name)
+
+    def _build_target_section(self) -> None:
+        self._device_entry = ttk.Entry(self._target_section, style="App.TEntry")
         self._device_entry.insert(0, "AA:BB:CC:DD:EE:FF")
-        self._device_entry.pack(fill=tk.X, padx=8, pady=(0, 8))
+        self._device_entry.pack(fill=tk.X, padx=8, pady=(8, 8))
 
         self._device_list = ttk.Treeview(
-            target,
+            self._target_section,
             columns=("name", "address", "type"),
             show="headings",
             height=4,
@@ -687,8 +858,7 @@ class BluetoothScreen(BaseScreen):
         self._device_list.bind("<<TreeviewSelect>>", self._on_device_select)
 
     def _build_discovery_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
             title="",
@@ -719,11 +889,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_pairing_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Pairing",
+            title="",
             buttons=[
                 ("Pair", self._pair_device),
                 ("Trust", self._trust_device),
@@ -733,11 +902,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_connection_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Connection",
+            title="",
             buttons=[
                 ("Connect", self._connect_audio),
                 ("Disconnect", self._disconnect_audio),
@@ -746,11 +914,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_audio_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Audio",
+            title="",
             buttons=[
                 ("Auto Pair + Play", self._auto_pair_play),
                 ("Test Audio", lambda: self._set_status("Playing test audio.")),
@@ -759,11 +926,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_library_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Library",
+            title="",
             buttons=[
                 ("Save Device", lambda: self._set_status("Saving device profile.")),
                 ("Paired List", self._list_paired),
@@ -772,11 +938,10 @@ class BluetoothScreen(BaseScreen):
         return frame
 
     def _build_shortcuts_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._bt_content, style="App.TFrame")
-        self._build_target_section(frame)
+        frame = ttk.Frame(self._bt_screen_host, style="App.TFrame")
         self._build_button_card(
             frame,
-            title="Shortcuts",
+            title="",
             buttons=[
                 ("Last Device", lambda: self._set_status("Connecting last device.")),
                 ("Clear List", self._clear_devices),
@@ -904,10 +1069,19 @@ class BluetoothScreen(BaseScreen):
 
     def _list_paired(self) -> None:
         devices = self._client.list_paired()
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         for device in devices:
-            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+            device_type = self._client.device_type(device.address)
+            self._device_list.insert(
+                "", tk.END, values=(device.name, device.address, device_type)
+            )
         self._set_status("Showing paired devices.")
+        if devices:
+            primary = devices[0]
+            self._selected_name.set(primary.name)
+            self._selected_address.set(primary.address)
+            self._selected_type.set(self._client.device_type(primary.address))
 
     def _forget_device(self) -> None:
         address = self._device_address()
@@ -918,7 +1092,8 @@ class BluetoothScreen(BaseScreen):
         self._set_status(f"Removed {address}.")
 
     def _clear_devices(self) -> None:
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         self._set_status("Cleared device list.")
 
 
