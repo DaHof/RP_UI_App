@@ -70,6 +70,24 @@ sudo i2cdetect -y 1
 * The library data is stored at `data/library.json`.
 * Edit the UI flow in `src/ui/app.py`.
 
+## IR (LIRC) setup (planned)
+
+The IR UI is scaffolded and a LIRC client stub lives in `src/ir/lirc_client.py`. To prepare for
+IR capture/send on Raspberry Pi with LIRC:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y lirc
+```
+
+LIRC uses `/etc/lirc/lircd.conf` for remote definitions and `/etc/lirc/lirc_options.conf`
+for device configuration. Once configured, you can list remotes and send commands with:
+
+```bash
+irsend LIST "" ""
+irsend SEND_ONCE <remote_name> <button_name>
+```
+
 ## Deploy to Raspberry Pi (Option A: clone on the device)
 
 ```bash

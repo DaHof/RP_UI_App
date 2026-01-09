@@ -491,6 +491,20 @@ class IRScreen(BaseScreen):
         self._status = tk.StringVar(value="Pick an IR tool.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
 
+        wiring = ttk.Frame(self, style="Card.TFrame")
+        wiring.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(wiring, text="Hardware Wiring", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(
+            wiring,
+            text="Receiver (V1222): OUT → GPIO (input), VCC → 5V/3.3V, GND → GND",
+            style="Body.TLabel",
+        ).pack(pady=2, padx=8, anchor="w")
+        ttk.Label(
+            wiring,
+            text="Transmitter (V1221): DATA → GPIO (output), VCC → 5V/3.3V, GND → GND",
+            style="Body.TLabel",
+        ).pack(pady=(0, 6), padx=8, anchor="w")
+
         grid = ttk.Frame(self, style="App.TFrame")
         grid.pack(fill=tk.X, padx=16, pady=8)
         grid.columnconfigure(0, weight=1)
