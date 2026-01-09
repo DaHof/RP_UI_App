@@ -88,6 +88,30 @@ irsend LIST "" ""
 irsend SEND_ONCE <remote_name> <button_name>
 ```
 
+## Bluetooth (BlueZ) setup (planned)
+
+The Bluetooth UI is scaffolded and a BlueZ client stub lives in `src/bluetooth/bluez_client.py`.
+To prepare for scanning/pairing and audio playback:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y bluez bluez-tools pulseaudio-module-bluetooth
+```
+
+BlueZ can be controlled with `bluetoothctl` for scan/pair/trust/connect. Example:
+
+```bash
+bluetoothctl
+# inside bluetoothctl
+power on
+agent on
+default-agent
+scan on
+pair <MAC>
+trust <MAC>
+connect <MAC>
+```
+
 ## Deploy to Raspberry Pi (Option A: clone on the device)
 
 ```bash

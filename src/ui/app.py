@@ -50,6 +50,7 @@ class App(tk.Tk):
         self._add_screen("Clone/Write", CloneWriteScreen(self._screen_host, self))
         self._add_screen("Settings", SettingsScreen(self._screen_host, self))
         self._add_screen("IR", IRScreen(self._screen_host, self))
+        self._add_screen("Bluetooth", BluetoothScreen(self._screen_host, self))
         self._add_screen("WiFi", WiFiScreen(self._screen_host, self))
         self._add_screen("System", SystemScreen(self._screen_host, self))
 
@@ -57,7 +58,7 @@ class App(tk.Tk):
 
     def _build_left_nav(self) -> None:
         ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 12))
-        for label in ["Scan", "IR", "WiFi", "System"]:
+        for label in ["Scan", "IR", "Bluetooth", "WiFi", "System"]:
             button = ttk.Button(
                 self._nav,
                 text=label,
@@ -601,6 +602,79 @@ class WiFiScreen(BaseScreen):
             text="WiFi scan/connect tools will appear here.",
             style="Body.TLabel",
         ).pack(pady=6)
+
+
+class BluetoothScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        ttk.Label(self, text="Bluetooth", style="Title.TLabel").pack(pady=10)
+        self._status = tk.StringVar(value="Pick a Bluetooth tool.")
+        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+
+        grid = ttk.Frame(self, style="App.TFrame")
+        grid.pack(fill=tk.X, padx=16, pady=8)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=0,
+            title="Discovery",
+            buttons=[
+                ("Scan Devices", lambda: self._set_status("Scanning for devices.")),
+                ("Known Devices", lambda: self._set_status("Listing known devices.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=1,
+            title="Pairing",
+            buttons=[
+                ("Pair", lambda: self._set_status("Pairing to selected device.")),
+                ("Trust", lambda: self._set_status("Trusting selected device.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=0,
+            title="Audio",
+            buttons=[
+                ("Connect A2DP", lambda: self._set_status("Connecting audio profile.")),
+                ("Disconnect", lambda: self._set_status("Disconnecting audio.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=1,
+            title="Automation",
+            buttons=[
+                ("Auto Pair + Play", lambda: self._set_status("Auto pairing and playing.")),
+                ("Last Device", lambda: self._set_status("Connecting last device.")),
+            ],
+        )
+
+    def _build_tool_group(
+        self,
+        master: ttk.Frame,
+        row: int,
+        column: int,
+        title: str,
+        buttons: list[tuple[str, Callable[[], None]]],
+    ) -> None:
+        card = ttk.Frame(master, style="Card.TFrame")
+        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        for label, command in buttons:
+            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
+                pady=4, padx=8, fill=tk.X
+            )
+
+    def _set_status(self, message: str) -> None:
+        self._status.set(message)
 
 
 class SystemScreen(BaseScreen):
