@@ -47,7 +47,7 @@ class App(tk.Tk):
         self._add_screen("Scan", ScanScreen(self._screen_host, self))
         self._add_screen("Library", LibraryScreen(self._screen_host, self))
         self._add_screen("Emulate", EmulateScreen(self._screen_host, self))
-        self._add_screen("Hardware", ToolsScreen(self._screen_host, self))
+        self._add_screen("Clone/Write", CloneWriteScreen(self._screen_host, self))
         self._add_screen("Settings", SettingsScreen(self._screen_host, self))
         self._add_screen("IR", IRScreen(self._screen_host, self))
         self._add_screen("WiFi", WiFiScreen(self._screen_host, self))
@@ -182,7 +182,7 @@ class App(tk.Tk):
         for child in self._subnav.winfo_children():
             child.destroy()
         if name == "Scan":
-            for label in ["Scan", "Library", "Emulate", "Hardware", "Settings"]:
+            for label in ["Scan", "Library", "Emulate", "Clone/Write", "Settings"]:
                 ttk.Button(
                     self._subnav,
                     text=label,
@@ -284,6 +284,19 @@ class ScanScreen(BaseScreen):
             command=self._go_emulate,
         ).grid(row=1, column=1, padx=8, pady=8)
 
+        simulate = ttk.Frame(self, style="Card.TFrame")
+        simulate.pack(fill=tk.X, padx=16, pady=12)
+        ttk.Label(simulate, text="Mock Tag", style="Body.TLabel").pack(pady=6)
+        self._uid_entry = ttk.Entry(simulate, style="App.TEntry")
+        self._uid_entry.insert(0, "04:AB:CD:EF")
+        self._uid_entry.pack(pady=4, padx=8, fill=tk.X)
+        self._type_entry = ttk.Entry(simulate, style="App.TEntry")
+        self._type_entry.insert(0, "NTAG213")
+        self._type_entry.pack(pady=4, padx=8, fill=tk.X)
+        ttk.Button(
+            simulate, text="Simulate Tag", style="Secondary.TButton", command=self._simulate
+        ).pack(pady=8)
+
     def on_tag_detected(self, detection: TagDetection, profile: Optional[CardProfile]) -> None:
         self._status.set("Tag detected")
         name = profile.friendly_name if profile else "Unnamed tag"
@@ -297,10 +310,17 @@ class ScanScreen(BaseScreen):
         self._app.show_screen("Library")
 
     def _go_clone(self) -> None:
-        self._app.show_screen("Library")
+        self._app.show_screen("Clone/Write")
 
     def _go_emulate(self) -> None:
         self._app.show_screen("Emulate")
+
+    def _simulate(self) -> None:
+        uid = self._uid_entry.get().strip()
+        tag_type = self._type_entry.get().strip() or "Unknown"
+        reader = getattr(self._app, "reader", None)
+        if reader and hasattr(reader, "simulate_tag"):
+            reader.simulate_tag(uid, tag_type)
 
 
 class LibraryScreen(BaseScreen):
@@ -361,7 +381,7 @@ class LibraryScreen(BaseScreen):
         self._app.show_screen("Emulate")
 
     def _clone(self) -> None:
-        self._app.show_screen("Hardware")
+        self._app.show_screen("Clone/Write")
 
     def _delete(self) -> None:
         if not self._listbox.curselection():
@@ -405,11 +425,11 @@ class EmulateScreen(BaseScreen):
             self._status.set(f"Emulating {profile.friendly_name} ({self._method.get()})")
 
 
-class ToolsScreen(BaseScreen):
+class CloneWriteScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="Hardware", style="Title.TLabel").pack(pady=10)
-        self._status = tk.StringVar(value="Scan hardware tools.")
+        ttk.Label(self, text="Clone/Write", style="Title.TLabel").pack(pady=10)
+        self._status = tk.StringVar(value="Select a tag from the Library to clone or write.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
 
         grid = ttk.Frame(self, style="App.TFrame")
@@ -420,25 +440,13 @@ class ToolsScreen(BaseScreen):
             grid,
             row=0,
             column=0,
-            title="Scan",
+            title="Clone/Write",
             buttons=[
-                ("Scan (Low)", lambda: self._set_status("Low-power scan pending.")),
-                ("Scan (High)", lambda: self._set_status("High-power scan pending.")),
+                ("Clone (Auto)", lambda: self._set_status("Clone using best available method.")),
+                ("Write NDEF", lambda: self._set_status("Write NDEF to target tag.")),
+                ("Write Raw", lambda: self._set_status("Write raw memory to target tag.")),
             ],
         )
-
-        simulate = ttk.Frame(self, style="Card.TFrame")
-        simulate.pack(fill=tk.X, padx=16, pady=12)
-        ttk.Label(simulate, text="Mock Tag", style="Body.TLabel").pack(pady=6)
-        self._uid_entry = ttk.Entry(simulate, style="App.TEntry")
-        self._uid_entry.insert(0, "04:AB:CD:EF")
-        self._uid_entry.pack(pady=4, padx=8, fill=tk.X)
-        self._type_entry = ttk.Entry(simulate, style="App.TEntry")
-        self._type_entry.insert(0, "NTAG213")
-        self._type_entry.pack(pady=4, padx=8, fill=tk.X)
-        ttk.Button(
-            simulate, text="Simulate Tag", style="Secondary.TButton", command=self._simulate
-        ).pack(pady=8)
 
     def _build_tool_group(
         self,
@@ -458,13 +466,6 @@ class ToolsScreen(BaseScreen):
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
-
-    def _simulate(self) -> None:
-        uid = self._uid_entry.get().strip()
-        tag_type = self._type_entry.get().strip() or "Unknown"
-        reader = getattr(self._app, "reader", None)
-        if reader and hasattr(reader, "simulate_tag"):
-            reader.simulate_tag(uid, tag_type)
 
 
 class SettingsScreen(BaseScreen):
@@ -487,11 +488,94 @@ class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="IR", style="Title.TLabel").pack(pady=10)
-        ttk.Label(
-            self,
-            text="IR sender/receiver features will appear here.",
-            style="Body.TLabel",
-        ).pack(pady=6)
+        self._status = tk.StringVar(value="Pick an IR tool.")
+        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+
+        grid = ttk.Frame(self, style="App.TFrame")
+        grid.pack(fill=tk.X, padx=16, pady=8)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=0,
+            title="Capture",
+            buttons=[
+                ("Start Capture", lambda: self._set_status("Listening for IR signals.")),
+                ("Recent Captures", lambda: self._set_status("Showing recent captures.")),
+                ("Save to Library", lambda: self._set_status("Save current capture.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=1,
+            title="Library",
+            buttons=[
+                ("Browse Signals", lambda: self._set_status("Browse saved IR signals.")),
+                ("Send Selected", lambda: self._set_status("Send selected IR signal.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=0,
+            title="Remote",
+            buttons=[
+                ("Pick Device", lambda: self._set_status("Select a device profile.")),
+                ("Favorites", lambda: self._set_status("Open favorite buttons.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=1,
+            title="Learn / Pair",
+            buttons=[
+                ("Guided Learn", lambda: self._set_status("Start guided learning.")),
+                ("Edit Profile", lambda: self._set_status("Edit device mappings.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=2,
+            column=0,
+            title="Send",
+            buttons=[
+                ("Protocol Send", lambda: self._set_status("Send by protocol.")),
+                ("Raw Send", lambda: self._set_status("Send raw timings.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=2,
+            column=1,
+            title="Settings",
+            buttons=[
+                ("IR Hardware", lambda: self._set_status("Open IR settings.")),
+                ("Import/Export", lambda: self._set_status("Import or export signals.")),
+            ],
+        )
+
+    def _build_tool_group(
+        self,
+        master: ttk.Frame,
+        row: int,
+        column: int,
+        title: str,
+        buttons: list[tuple[str, Callable[[], None]]],
+    ) -> None:
+        card = ttk.Frame(master, style="Card.TFrame")
+        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        for label, command in buttons:
+            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
+                pady=4, padx=8, fill=tk.X
+            )
+
+    def _set_status(self, message: str) -> None:
+        self._status.set(message)
 
 
 class WiFiScreen(BaseScreen):
