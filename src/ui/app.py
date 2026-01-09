@@ -20,6 +20,8 @@ class App(tk.Tk):
         self._on_shutdown = on_shutdown
         self._current_detection: Optional[TagDetection] = None
         self._current_profile: Optional[CardProfile] = None
+        self._ir_tx_pin = tk.StringVar(value="GPIO18 (Pin 12)")
+        self._ir_rx_pin = tk.StringVar(value="GPIO23 (Pin 16)")
 
         layout = ttk.Frame(self, style="App.TFrame")
         layout.pack(fill=tk.BOTH, expand=True)
@@ -261,6 +263,16 @@ class App(tk.Tk):
     def shutdown(self) -> None:
         self._on_shutdown()
         self.destroy()
+
+    def ir_tx_pin(self) -> str:
+        return self._ir_tx_pin.get()
+
+    def ir_rx_pin(self) -> str:
+        return self._ir_rx_pin.get()
+
+    def set_ir_pins(self, tx_pin: str, rx_pin: str) -> None:
+        self._ir_tx_pin.set(tx_pin)
+        self._ir_rx_pin.set(rx_pin)
 
 
 class BaseScreen(ttk.Frame):
@@ -511,27 +523,43 @@ class SettingsScreen(BaseScreen):
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
 
+        ir_frame = ttk.Frame(self, style="Card.TFrame")
+        ir_frame.pack(pady=8, padx=16, fill=tk.X)
+        ttk.Label(ir_frame, text="IR GPIO Pins", style="Status.TLabel").pack(pady=(8, 4))
+        pin_row = ttk.Frame(ir_frame, style="Card.TFrame")
+        pin_row.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Label(pin_row, text="TX:", style="Body.TLabel").grid(row=0, column=0, padx=4)
+        self._ir_tx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_tx_entry.insert(0, self._app.ir_tx_pin())
+        self._ir_tx_entry.grid(row=0, column=1, padx=4, sticky="ew")
+        ttk.Label(pin_row, text="RX:", style="Body.TLabel").grid(row=0, column=2, padx=4)
+        self._ir_rx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_rx_entry.insert(0, self._app.ir_rx_pin())
+        self._ir_rx_entry.grid(row=0, column=3, padx=4, sticky="ew")
+        pin_row.columnconfigure(1, weight=1)
+        pin_row.columnconfigure(3, weight=1)
+        ttk.Button(
+            ir_frame,
+            text="Save IR Pins",
+            style="Secondary.TButton",
+            command=self._save_ir_pins,
+        ).pack(pady=(0, 8))
+
+    def _save_ir_pins(self) -> None:
+        tx_pin = self._ir_tx_entry.get().strip() or self._app.ir_tx_pin()
+        rx_pin = self._ir_rx_entry.get().strip() or self._app.ir_rx_pin()
+        self._app.set_ir_pins(tx_pin, rx_pin)
+
 
 class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="IR", style="Title.TLabel").pack(pady=10)
         self._status = tk.StringVar(value="Pick an IR tool.")
+        self._debug_status = tk.StringVar(value="Debug ready.")
+        self._captures: list[dict[str, str]] = []
+        self._capture_detail = tk.StringVar(value="No captures yet.")
         ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
-
-        wiring = ttk.Frame(self, style="Card.TFrame")
-        wiring.pack(fill=tk.X, padx=16, pady=6)
-        ttk.Label(wiring, text="Hardware Wiring", style="Status.TLabel").pack(pady=(8, 4))
-        ttk.Label(
-            wiring,
-            text="Receiver (V1222): OUT → GPIO (input), VCC → 5V/3.3V, GND → GND",
-            style="Body.TLabel",
-        ).pack(pady=2, padx=8, anchor="w")
-        ttk.Label(
-            wiring,
-            text="Transmitter (V1221): DATA → GPIO (output), VCC → 5V/3.3V, GND → GND",
-            style="Body.TLabel",
-        ).pack(pady=(0, 6), padx=8, anchor="w")
 
         grid = ttk.Frame(self, style="App.TFrame")
         grid.pack(fill=tk.X, padx=16, pady=8)
@@ -544,8 +572,8 @@ class IRScreen(BaseScreen):
             column=0,
             title="Capture",
             buttons=[
-                ("Start Capture", lambda: self._set_status("Listening for IR signals.")),
-                ("Recent Captures", lambda: self._set_status("Showing recent captures.")),
+                ("Start Capture", self._start_capture),
+                ("Recent Captures", self._show_recent_captures),
                 ("Save to Library", lambda: self._set_status("Save current capture.")),
             ],
         )
@@ -600,6 +628,44 @@ class IRScreen(BaseScreen):
             ],
         )
 
+        captures = ttk.Frame(self, style="Card.TFrame")
+        captures.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
+        self._capture_list = tk.Listbox(
+            captures,
+            height=5,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
+        ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+
+        debug = ttk.Frame(self, style="Card.TFrame")
+        debug.pack(fill=tk.X, padx=16, pady=6)
+        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
+        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
+        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Button(
+            debug_buttons,
+            text="Check Pins",
+            style="Secondary.TButton",
+            command=self._check_pins,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            debug_buttons,
+            text="Mark OK",
+            style="Secondary.TButton",
+            command=lambda: self._debug_status.set("IR debug status: OK."),
+        ).pack(side=tk.LEFT, padx=4)
+
     def _build_tool_group(
         self,
         master: ttk.Frame,
@@ -618,6 +684,53 @@ class IRScreen(BaseScreen):
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
+
+    def _start_capture(self) -> None:
+        self._set_status("Listening for IR signals.")
+        self._add_capture(
+            name="Capture",
+            protocol="NEC",
+            data="0x20DF10EF",
+            source="GPIO23",
+        )
+
+    def _show_recent_captures(self) -> None:
+        if not self._captures:
+            self._add_capture(
+                name="Recent",
+                protocol="RC5",
+                data="0x1FE4",
+                source="GPIO23",
+            )
+        self._set_status("Showing recent captures.")
+
+    def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
+        capture = {
+            "name": name,
+            "protocol": protocol,
+            "data": data,
+            "source": source,
+        }
+        self._captures.append(capture)
+        self._capture_list.insert(tk.END, f"{name} ({protocol}) {data}")
+        self._capture_list.selection_clear(0, tk.END)
+        self._capture_list.selection_set(tk.END)
+        self._capture_list.event_generate("<<ListboxSelect>>")
+
+    def _on_capture_select(self, event: tk.Event) -> None:
+        if not self._capture_list.curselection():
+            return
+        index = self._capture_list.curselection()[0]
+        capture = self._captures[index]
+        detail = (
+            f"Protocol: {capture['protocol']} | Data: {capture['data']} | Source: {capture['source']}"
+        )
+        self._capture_detail.set(detail)
+
+    def _check_pins(self) -> None:
+        tx_pin = self._app.ir_tx_pin()
+        rx_pin = self._app.ir_rx_pin()
+        self._debug_status.set(f"IR pins set to TX: {tx_pin}, RX: {rx_pin}.")
 
 
 class WiFiScreen(BaseScreen):
