@@ -205,6 +205,19 @@ class App(tk.Tk):
                     command=lambda screen_name=label: self.show_screen(screen_name),
                 ).pack(side=tk.LEFT, padx=6, pady=6)
             self.show_screen("Scan")
+        elif name == "Bluetooth":
+            bluetooth_screen = self._screens["Bluetooth"]
+            for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: bluetooth_screen.show_subscreen(
+                        screen_name
+                    ),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("Bluetooth")
+            bluetooth_screen.show_subscreen("Discovery")
         else:
             self.show_screen(name)
 
@@ -629,8 +642,6 @@ class BluetoothScreen(BaseScreen):
         self._selected_address = tk.StringVar(value="")
         self._selected_type = tk.StringVar(value="")
 
-        self._subnav = ttk.Frame(self, style="Nav.TFrame")
-        self._subnav.pack(fill=tk.X, padx=16, pady=6)
         self._bt_content = ttk.Frame(self, style="App.TFrame")
         self._bt_content.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
 
@@ -644,14 +655,6 @@ class BluetoothScreen(BaseScreen):
         self._add_bt_screen("Library", self._build_library_screen())
         self._add_bt_screen("Shortcuts", self._build_shortcuts_screen())
 
-        for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
-            ttk.Button(
-                self._subnav,
-                text=label,
-                style="Small.TButton",
-                command=lambda name=label: self._show_bt_screen(name),
-            ).pack(side=tk.LEFT, padx=4, pady=4)
-
         self._show_bt_screen("Discovery")
 
     def _add_bt_screen(self, name: str, frame: tk.Frame) -> None:
@@ -663,10 +666,12 @@ class BluetoothScreen(BaseScreen):
         self._current_bt_screen = self._bt_screens[name]
         self._current_bt_screen.pack(fill=tk.BOTH, expand=True)
 
+    def show_subscreen(self, name: str) -> None:
+        self._show_bt_screen(name)
+
     def _build_target_section(self, master: ttk.Frame) -> None:
         target = ttk.Frame(self, style="Card.TFrame")
         target.pack(fill=tk.X, pady=6)
-        ttk.Label(target, text="Target Device", style="Status.TLabel").pack(pady=(8, 4))
         self._device_entry = ttk.Entry(target, style="App.TEntry")
         self._device_entry.insert(0, "AA:BB:CC:DD:EE:FF")
         self._device_entry.pack(fill=tk.X, padx=8, pady=(0, 8))
@@ -723,7 +728,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Pairing",
+            title="",
             buttons=[
                 ("Pair", self._pair_device),
                 ("Trust", self._trust_device),
@@ -737,7 +742,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Connection",
+            title="",
             buttons=[
                 ("Connect", self._connect_audio),
                 ("Disconnect", self._disconnect_audio),
@@ -750,7 +755,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Audio",
+            title="",
             buttons=[
                 ("Auto Pair + Play", self._auto_pair_play),
                 ("Test Audio", lambda: self._set_status("Playing test audio.")),
@@ -763,7 +768,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Library",
+            title="",
             buttons=[
                 ("Save Device", lambda: self._set_status("Saving device profile.")),
                 ("Paired List", self._list_paired),
@@ -776,7 +781,7 @@ class BluetoothScreen(BaseScreen):
         self._build_target_section(frame)
         self._build_button_card(
             frame,
-            title="Shortcuts",
+            title="",
             buttons=[
                 ("Last Device", lambda: self._set_status("Connecting last device.")),
                 ("Clear List", self._clear_devices),
