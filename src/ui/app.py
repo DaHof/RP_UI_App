@@ -52,13 +52,14 @@ class App(tk.Tk):
         self._add_screen("IR", IRScreen(self._screen_host, self))
         self._add_screen("Bluetooth", BluetoothScreen(self._screen_host, self))
         self._add_screen("WiFi", WiFiScreen(self._screen_host, self))
+        self._add_screen("Proxmark", ProxmarkScreen(self._screen_host, self))
         self._add_screen("System", SystemScreen(self._screen_host, self))
 
         self.show_section("Scan")
 
     def _build_left_nav(self) -> None:
         ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 12))
-        for label in ["Scan", "IR", "Bluetooth", "WiFi", "System"]:
+        for label in ["Scan", "IR", "Bluetooth", "WiFi", "Proxmark", "System"]:
             button = ttk.Button(
                 self._nav,
                 text=label,
@@ -817,6 +818,79 @@ class SystemScreen(BaseScreen):
             text="System actions will appear here.",
             style="Body.TLabel",
         ).pack(pady=6)
+
+
+class ProxmarkScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        ttk.Label(self, text="Proxmark", style="Title.TLabel").pack(pady=10)
+        self._status = tk.StringVar(value="Pick a Proxmark tool.")
+        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+
+        grid = ttk.Frame(self, style="App.TFrame")
+        grid.pack(fill=tk.X, padx=16, pady=8)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=0,
+            title="Connection",
+            buttons=[
+                ("Connect USB", lambda: self._set_status("Connecting to Proxmark...")),
+                ("Device Info", lambda: self._set_status("Fetching device info.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=0,
+            column=1,
+            title="Read",
+            buttons=[
+                ("Low Frequency", lambda: self._set_status("LF read pending.")),
+                ("High Frequency", lambda: self._set_status("HF read pending.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=0,
+            title="Write/Clone",
+            buttons=[
+                ("Clone", lambda: self._set_status("Clone pending.")),
+                ("Write", lambda: self._set_status("Write pending.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=1,
+            column=1,
+            title="Sniff/Tools",
+            buttons=[
+                ("Sniff", lambda: self._set_status("Sniff mode pending.")),
+                ("Script", lambda: self._set_status("Run Proxmark script.")),
+            ],
+        )
+
+    def _build_tool_group(
+        self,
+        master: ttk.Frame,
+        row: int,
+        column: int,
+        title: str,
+        buttons: list[tuple[str, Callable[[], None]]],
+    ) -> None:
+        card = ttk.Frame(master, style="Card.TFrame")
+        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        for label, command in buttons:
+            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
+                pady=4, padx=8, fill=tk.X
+            )
+
+    def _set_status(self, message: str) -> None:
+        self._status.set(message)
 
 
 class SaveDialog(tk.Toplevel):
