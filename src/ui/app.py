@@ -156,6 +156,19 @@ class App(tk.Tk):
         )
 
         style.configure(
+            "Small.TButton",
+            background=self._colors["panel"],
+            foreground=self._colors["text"],
+            font=("Courier", 10, "bold"),
+            padding=6,
+        )
+        style.map(
+            "Small.TButton",
+            background=[("active", self._colors["panel_alt"])],
+            foreground=[("active", self._colors["accent"])],
+        )
+
+        style.configure(
             "App.TEntry",
             fieldbackground=self._colors["panel"],
             background=self._colors["panel"],
@@ -614,6 +627,7 @@ class BluetoothScreen(BaseScreen):
         self._status = tk.StringVar(value="")
         self._selected_name = tk.StringVar(value="No device selected")
         self._selected_address = tk.StringVar(value="")
+        self._selected_type = tk.StringVar(value="")
 
         self._subnav = ttk.Frame(self, style="Nav.TFrame")
         self._subnav.pack(fill=tk.X, padx=16, pady=6)
@@ -634,7 +648,7 @@ class BluetoothScreen(BaseScreen):
             ttk.Button(
                 self._subnav,
                 text=label,
-                style="Nav.TButton",
+                style="Small.TButton",
                 command=lambda name=label: self._show_bt_screen(name),
             ).pack(side=tk.LEFT, padx=4, pady=4)
 
@@ -657,18 +671,20 @@ class BluetoothScreen(BaseScreen):
         self._device_entry.insert(0, "AA:BB:CC:DD:EE:FF")
         self._device_entry.pack(fill=tk.X, padx=8, pady=(0, 8))
 
-        self._device_list = tk.Listbox(
+        self._device_list = ttk.Treeview(
             target,
+            columns=("name", "address", "type"),
+            show="headings",
             height=4,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
-            highlightthickness=0,
-            relief=tk.FLAT,
         )
+        self._device_list.heading("name", text="Device Name")
+        self._device_list.heading("address", text="Address")
+        self._device_list.heading("type", text="Type")
+        self._device_list.column("name", width=180, anchor="w")
+        self._device_list.column("address", width=120, anchor="w")
+        self._device_list.column("type", width=80, anchor="w")
         self._device_list.pack(fill=tk.X, padx=8, pady=(0, 8))
-        self._device_list.bind("<<ListboxSelect>>", self._on_device_select)
+        self._device_list.bind("<<TreeviewSelect>>", self._on_device_select)
 
     def _build_discovery_screen(self) -> tk.Frame:
         frame = ttk.Frame(self._bt_content, style="App.TFrame")
@@ -679,12 +695,6 @@ class BluetoothScreen(BaseScreen):
             buttons=[
                 ("Scan Devices", self._scan_devices),
                 ("Known Devices", self._list_known),
-            ],
-        )
-        self._build_button_card(
-            frame,
-            title="",
-            buttons=[
                 ("Power On", self._power_on),
                 ("Power Off", self._power_off),
             ],
@@ -695,6 +705,7 @@ class BluetoothScreen(BaseScreen):
         ttk.Label(details, textvariable=self._selected_address, style="Muted.TLabel").pack(
             pady=(0, 6)
         )
+        ttk.Label(details, textvariable=self._selected_type, style="Muted.TLabel").pack(pady=(0, 6))
         self._build_button_card(
             details,
             title="",
@@ -785,7 +796,7 @@ class BluetoothScreen(BaseScreen):
         for index, (label, command) in enumerate(buttons):
             button_row.columnconfigure(index, weight=1)
             ttk.Button(
-                button_row, text=label, style="Secondary.TButton", command=command
+                button_row, text=label, style="Small.TButton", command=command
             ).grid(row=0, column=index, padx=4, sticky="ew")
 
     def _set_status(self, message: str) -> None:
@@ -795,24 +806,27 @@ class BluetoothScreen(BaseScreen):
         return self._device_entry.get().strip()
 
     def _on_device_select(self, event: tk.Event) -> None:
-        if not self._device_list.curselection():
+        selection = self._device_list.selection()
+        if not selection:
             return
-        index = self._device_list.curselection()[0]
-        value = self._device_list.get(index)
-        if value.startswith("[") and "]" in value:
-            address = value.split("]", 1)[0].strip("[] ")
-            name = value.split("]", 1)[1].strip() if "]" in value else ""
-            self._device_entry.delete(0, tk.END)
-            self._device_entry.insert(0, address)
-            self._selected_name.set(name or "Unknown device")
-            self._selected_address.set(address)
+        item = selection[0]
+        name, address, device_type = self._device_list.item(item, "values")
+        self._device_entry.delete(0, tk.END)
+        self._device_entry.insert(0, address)
+        self._selected_name.set(name or "Unknown device")
+        self._selected_address.set(address)
+        self._selected_type.set(device_type or "Unknown")
 
     def _scan_devices(self) -> None:
         self._set_status("Scanning for devices...")
         devices = self._client.scan()
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         for device in devices:
-            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+            device_type = self._client.device_type(device.address)
+            self._device_list.insert(
+                "", tk.END, values=(device.name, device.address, device_type)
+            )
         self._set_status(f"Found {len(devices)} device(s).")
 
         if devices:
@@ -822,17 +836,23 @@ class BluetoothScreen(BaseScreen):
             )
             self._selected_name.set(primary.name)
             self._selected_address.set(primary.address)
+            self._selected_type.set(self._client.device_type(primary.address))
 
     def _list_known(self) -> None:
         devices = self._client.list_paired()
-        self._device_list.delete(0, tk.END)
+        for item in self._device_list.get_children():
+            self._device_list.delete(item)
         for device in devices:
-            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+            device_type = self._client.device_type(device.address)
+            self._device_list.insert(
+                "", tk.END, values=(device.name, device.address, device_type)
+            )
         self._set_status("Showing known devices.")
         if devices:
             primary = devices[0]
             self._selected_name.set(primary.name)
             self._selected_address.set(primary.address)
+            self._selected_type.set(self._client.device_type(primary.address))
 
     def _power_on(self) -> None:
         self._client.power_on()
