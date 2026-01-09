@@ -713,44 +713,6 @@ class IRScreen(BaseScreen):
         ).pack(side=tk.LEFT, padx=4)
         return frame
 
-        captures = ttk.Frame(self, style="Card.TFrame")
-        captures.pack(fill=tk.X, padx=16, pady=6)
-        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
-        self._capture_list = tk.Listbox(
-            captures,
-            height=5,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
-            highlightthickness=0,
-            relief=tk.FLAT,
-        )
-        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
-        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
-        ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
-            pady=(0, 8)
-        )
-
-        debug = ttk.Frame(self, style="Card.TFrame")
-        debug.pack(fill=tk.X, padx=16, pady=6)
-        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
-        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
-        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
-        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
-        ttk.Button(
-            debug_buttons,
-            text="Check Pins",
-            style="Secondary.TButton",
-            command=self._check_pins,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Button(
-            debug_buttons,
-            text="Mark OK",
-            style="Secondary.TButton",
-            command=lambda: self._debug_status.set("IR debug status: OK."),
-        ).pack(side=tk.LEFT, padx=4)
-
     def _build_tool_group(
         self,
         master: ttk.Frame,
@@ -760,10 +722,13 @@ class IRScreen(BaseScreen):
         card = ttk.Frame(master, style="Card.TFrame")
         card.pack(fill=tk.X, pady=6)
         ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
-        for label, command in buttons:
-            ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
-                pady=4, padx=8, fill=tk.X
-            )
+        button_row = ttk.Frame(card, style="Card.TFrame")
+        button_row.pack(fill=tk.X, padx=8, pady=8)
+        for index, (label, command) in enumerate(buttons):
+            button_row.columnconfigure(index, weight=1)
+            ttk.Button(
+                button_row, text=label, style="Small.TButton", command=command
+            ).grid(row=0, column=index, padx=4, sticky="ew")
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
