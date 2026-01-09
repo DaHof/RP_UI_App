@@ -80,12 +80,46 @@ sudo apt-get update
 sudo apt-get install -y lirc
 ```
 
+If the install fails, verify the device has network access and the package lists are enabled,
+then retry. On some images you may need to run `sudo apt update` first and confirm that
+`/etc/apt/sources.list` (or `/etc/apt/sources.list.d/`) includes your distribution mirrors.
+
+If you are using `ir-keytable`, you may prefer to install its dependencies instead of LIRC:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y v4l-utils ir-keytable
+```
+
+### IR wiring (V1221/V1222)
+
+Default wiring targets the following Raspberry Pi pins (configurable in the UI Settings screen):
+
+* Transmitter (V1221): GND → Pin 6 (GND), VCC → Pin 2 (5 V), DAT → GPIO18 (Pin 12)
+* Receiver (V1222): GND → Pin 6 (GND), VCC → Pin 1 (3.3 V), OUT → GPIO23 (Pin 16)
+
 LIRC uses `/etc/lirc/lircd.conf` for remote definitions and `/etc/lirc/lirc_options.conf`
 for device configuration. Once configured, you can list remotes and send commands with:
 
 ```bash
 irsend LIST "" ""
 irsend SEND_ONCE <remote_name> <button_name>
+```
+
+### LIRC kernel overlays (gpio-ir)
+
+For Raspberry Pi GPIO-based IR, add the overlays in `/boot/config.txt` (or the relevant boot
+config for your image) and reboot:
+
+```ini
+dtoverlay=gpio-ir,gpio_pin=16
+dtoverlay=gpio-ir-tx,gpio_pin=12
+```
+
+After rebooting, confirm the LIRC device node is present:
+
+```bash
+ls -l /dev/lirc*
 ```
 
 ## Bluetooth (BlueZ) setup (planned)
