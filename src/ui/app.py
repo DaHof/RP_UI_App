@@ -207,6 +207,17 @@ class App(tk.Tk):
                     command=lambda screen_name=label: self.show_screen(screen_name),
                 ).pack(side=tk.LEFT, padx=6, pady=6)
             self.show_screen("Scan")
+        elif name == "IR":
+            ir_screen = self._screens["IR"]
+            for label in ["Capture", "Library", "Remote", "Learn/Pair", "Send", "Settings"]:
+                ttk.Button(
+                    self._subnav,
+                    text=label,
+                    style="Nav.TButton",
+                    command=lambda screen_name=label: ir_screen.show_subscreen(screen_name),
+                ).pack(side=tk.LEFT, padx=6, pady=6)
+            self.show_screen("IR")
+            ir_screen.show_subscreen("Capture")
         elif name == "Bluetooth":
             bluetooth_screen = self._screens["Bluetooth"]
             for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
@@ -554,22 +565,48 @@ class SettingsScreen(BaseScreen):
 class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="IR", style="Title.TLabel").pack(pady=10)
         self._status = tk.StringVar(value="Pick an IR tool.")
         self._debug_status = tk.StringVar(value="Debug ready.")
         self._captures: list[dict[str, str]] = []
         self._capture_detail = tk.StringVar(value="No captures yet.")
-        ttk.Label(self, textvariable=self._status, style="Muted.TLabel").pack(pady=4)
+        status_row = ttk.Frame(self, style="App.TFrame")
+        status_row.pack(fill=tk.X, padx=16, pady=(10, 4))
+        ttk.Label(status_row, text="IR", style="Title.TLabel").pack(side=tk.LEFT)
+        ttk.Label(status_row, textvariable=self._status, style="Muted.TLabel").pack(
+            side=tk.LEFT, padx=12
+        )
 
-        grid = ttk.Frame(self, style="App.TFrame")
-        grid.pack(fill=tk.X, padx=16, pady=8)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
+        self._ir_screen_host = ttk.Frame(self, style="App.TFrame")
+        self._ir_screen_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
 
+        self._ir_screens: dict[str, tk.Frame] = {}
+        self._current_ir_screen: Optional[tk.Frame] = None
+
+        self._add_ir_screen("Capture", self._build_capture_screen())
+        self._add_ir_screen("Library", self._build_library_screen())
+        self._add_ir_screen("Remote", self._build_remote_screen())
+        self._add_ir_screen("Learn/Pair", self._build_learn_screen())
+        self._add_ir_screen("Send", self._build_send_screen())
+        self._add_ir_screen("Settings", self._build_settings_screen())
+
+        self._show_ir_screen("Capture")
+
+    def _add_ir_screen(self, name: str, frame: tk.Frame) -> None:
+        self._ir_screens[name] = frame
+
+    def _show_ir_screen(self, name: str) -> None:
+        if self._current_ir_screen:
+            self._current_ir_screen.pack_forget()
+        self._current_ir_screen = self._ir_screens[name]
+        self._current_ir_screen.pack(fill=tk.BOTH, expand=True)
+
+    def show_subscreen(self, name: str) -> None:
+        self._show_ir_screen(name)
+
+    def _build_capture_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=0,
-            column=0,
+            frame,
             title="Capture",
             buttons=[
                 ("Start Capture", self._start_capture),
@@ -577,56 +614,104 @@ class IRScreen(BaseScreen):
                 ("Save to Library", lambda: self._set_status("Save current capture.")),
             ],
         )
+
+        captures = ttk.Frame(frame, style="Card.TFrame")
+        captures.pack(fill=tk.X, pady=6)
+        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
+        self._capture_list = tk.Listbox(
+            captures,
+            height=5,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
+        ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+        return frame
+
+    def _build_library_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=0,
-            column=1,
+            frame,
             title="Library",
             buttons=[
                 ("Browse Signals", lambda: self._set_status("Browse saved IR signals.")),
                 ("Send Selected", lambda: self._set_status("Send selected IR signal.")),
             ],
         )
+        return frame
+
+    def _build_remote_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=1,
-            column=0,
+            frame,
             title="Remote",
             buttons=[
                 ("Pick Device", lambda: self._set_status("Select a device profile.")),
                 ("Favorites", lambda: self._set_status("Open favorite buttons.")),
             ],
         )
+        return frame
+
+    def _build_learn_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=1,
-            column=1,
+            frame,
             title="Learn / Pair",
             buttons=[
                 ("Guided Learn", lambda: self._set_status("Start guided learning.")),
                 ("Edit Profile", lambda: self._set_status("Edit device mappings.")),
             ],
         )
+        return frame
+
+    def _build_send_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=2,
-            column=0,
+            frame,
             title="Send",
             buttons=[
                 ("Protocol Send", lambda: self._set_status("Send by protocol.")),
                 ("Raw Send", lambda: self._set_status("Send raw timings.")),
             ],
         )
+        return frame
+
+    def _build_settings_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
-            grid,
-            row=2,
-            column=1,
+            frame,
             title="Settings",
             buttons=[
                 ("IR Hardware", lambda: self._set_status("Open IR settings.")),
                 ("Import/Export", lambda: self._set_status("Import or export signals.")),
             ],
         )
+        debug = ttk.Frame(frame, style="Card.TFrame")
+        debug.pack(fill=tk.X, pady=6)
+        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
+        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
+        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Button(
+            debug_buttons,
+            text="Check Pins",
+            style="Secondary.TButton",
+            command=self._check_pins,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            debug_buttons,
+            text="Mark OK",
+            style="Secondary.TButton",
+            command=lambda: self._debug_status.set("IR debug status: OK."),
+        ).pack(side=tk.LEFT, padx=4)
+        return frame
 
         captures = ttk.Frame(self, style="Card.TFrame")
         captures.pack(fill=tk.X, padx=16, pady=6)
@@ -669,13 +754,11 @@ class IRScreen(BaseScreen):
     def _build_tool_group(
         self,
         master: ttk.Frame,
-        row: int,
-        column: int,
         title: str,
         buttons: list[tuple[str, Callable[[], None]]],
     ) -> None:
         card = ttk.Frame(master, style="Card.TFrame")
-        card.grid(row=row, column=column, sticky="nsew", padx=8, pady=8)
+        card.pack(fill=tk.X, pady=6)
         ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
         for label, command in buttons:
             ttk.Button(card, text=label, style="Secondary.TButton", command=command).pack(
