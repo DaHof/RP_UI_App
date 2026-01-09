@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
@@ -565,10 +566,15 @@ class SettingsScreen(BaseScreen):
 class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
+        from ir.lirc_client import LircClient
+
         self._status = tk.StringVar(value="Pick an IR tool.")
         self._debug_status = tk.StringVar(value="Debug ready.")
         self._captures: list[dict[str, str]] = []
         self._capture_detail = tk.StringVar(value="No captures yet.")
+        self._capture_thread: Optional[threading.Thread] = None
+        self._capture_stop = threading.Event()
+        self._client = LircClient()
         status_row = ttk.Frame(self, style="App.TFrame")
         status_row.pack(fill=tk.X, padx=16, pady=(10, 4))
         ttk.Label(status_row, text="IR", style="Title.TLabel").pack(side=tk.LEFT)
@@ -610,7 +616,7 @@ class IRScreen(BaseScreen):
             title="",
             buttons=[
                 ("Start Capture", self._start_capture),
-                ("Recent Captures", self._show_recent_captures),
+                ("Stop Capture", self._stop_capture),
                 ("Save to Library", lambda: self._set_status("Save current capture.")),
             ],
         )
@@ -749,13 +755,13 @@ class IRScreen(BaseScreen):
         self._status.set(message)
 
     def _start_capture(self) -> None:
-        self._set_status("Listening for IR signals.")
-        self._add_capture(
-            name="Capture",
-            protocol="NEC",
-            data="0x20DF10EF",
-            source="GPIO23",
-        )
+        if self._capture_thread and self._capture_thread.is_alive():
+            self._set_status("Capture already running.")
+            return
+        self._capture_stop.clear()
+        self._set_status("Listening for IR signals via ir-keytable...")
+        self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self._capture_thread.start()
 
     def _show_recent_captures(self) -> None:
         if not self._captures:
@@ -766,6 +772,18 @@ class IRScreen(BaseScreen):
                 source="GPIO23",
             )
         self._set_status("Showing recent captures.")
+
+    def _stop_capture(self) -> None:
+        if not self._capture_thread or not self._capture_thread.is_alive():
+            self._set_status("Capture is not running.")
+            return
+        self._capture_stop.set()
+        self._set_status("Stopping capture...")
+
+    def _capture_loop(self) -> None:
+        for event in self._client.iter_keytable_events(self._capture_stop):
+            self._app.after(0, lambda payload=event: self._add_capture(**payload))
+        self._app.after(0, lambda: self._set_status("Capture stopped."))
 
     def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
         capture = {
