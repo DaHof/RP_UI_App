@@ -612,6 +612,8 @@ class BluetoothScreen(BaseScreen):
 
         self._client = BlueZClient()
         self._status = tk.StringVar(value="")
+        self._selected_name = tk.StringVar(value="No device selected")
+        self._selected_address = tk.StringVar(value="")
 
         self._subnav = ttk.Frame(self, style="Nav.TFrame")
         self._subnav.pack(fill=tk.X, padx=16, pady=6)
@@ -677,6 +679,31 @@ class BluetoothScreen(BaseScreen):
             buttons=[
                 ("Scan Devices", self._scan_devices),
                 ("Known Devices", self._list_known),
+            ],
+        )
+        self._build_button_card(
+            frame,
+            title="Bluetooth Power",
+            buttons=[
+                ("Power On", self._power_on),
+                ("Power Off", self._power_off),
+            ],
+        )
+        details = ttk.Frame(frame, style="Card.TFrame")
+        details.pack(fill=tk.X, pady=8)
+        ttk.Label(details, text="Selected Device", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(details, textvariable=self._selected_name, style="Body.TLabel").pack(pady=2)
+        ttk.Label(details, textvariable=self._selected_address, style="Muted.TLabel").pack(
+            pady=(0, 6)
+        )
+        self._build_button_card(
+            details,
+            title="Actions",
+            buttons=[
+                ("Pair", self._pair_device),
+                ("Trust", self._trust_device),
+                ("Connect", self._connect_audio),
+                ("Forget", self._forget_device),
             ],
         )
         return frame
@@ -774,8 +801,11 @@ class BluetoothScreen(BaseScreen):
         value = self._device_list.get(index)
         if value.startswith("[") and "]" in value:
             address = value.split("]", 1)[0].strip("[] ")
+            name = value.split("]", 1)[1].strip() if "]" in value else ""
             self._device_entry.delete(0, tk.END)
             self._device_entry.insert(0, address)
+            self._selected_name.set(name or "Unknown device")
+            self._selected_address.set(address)
 
     def _scan_devices(self) -> None:
         self._set_status("Scanning for devices...")
@@ -790,6 +820,8 @@ class BluetoothScreen(BaseScreen):
             self._set_status(
                 f"Found {len(devices)} device(s). Nearest: {primary.name} ({primary.address})."
             )
+            self._selected_name.set(primary.name)
+            self._selected_address.set(primary.address)
 
     def _list_known(self) -> None:
         devices = self._client.list_paired()
@@ -797,6 +829,18 @@ class BluetoothScreen(BaseScreen):
         for device in devices:
             self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
         self._set_status("Showing known devices.")
+        if devices:
+            primary = devices[0]
+            self._selected_name.set(primary.name)
+            self._selected_address.set(primary.address)
+
+    def _power_on(self) -> None:
+        self._client.power_on()
+        self._set_status("Bluetooth powered on.")
+
+    def _power_off(self) -> None:
+        self._client.power_off()
+        self._set_status("Bluetooth powered off.")
 
     def _pair_device(self) -> None:
         address = self._device_address()

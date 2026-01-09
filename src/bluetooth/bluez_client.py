@@ -21,6 +21,12 @@ class BlueZClient:
     def list_paired(self) -> List[BluetoothDevice]:
         return self._parse_devices(self._run(["bluetoothctl", "paired-devices"]))
 
+    def power_on(self) -> None:
+        self._run(["bluetoothctl", "power", "on"])
+
+    def power_off(self) -> None:
+        self._run(["bluetoothctl", "power", "off"])
+
     def pair(self, address: str) -> None:
         self._run(["bluetoothctl", "pair", address])
 
