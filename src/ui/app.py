@@ -657,26 +657,47 @@ class BluetoothScreen(BaseScreen):
             buttons=[
                 ("Pair", self._pair_device),
                 ("Trust", self._trust_device),
+                ("Forget", self._forget_device),
             ],
         )
         self._build_tool_group(
             grid,
             row=1,
             column=0,
-            title="Audio",
+            title="Connection",
             buttons=[
-                ("Connect A2DP", self._connect_audio),
-                ("Disconnect", lambda: self._set_status("Disconnecting audio.")),
+                ("Connect", self._connect_audio),
+                ("Disconnect", self._disconnect_audio),
             ],
         )
         self._build_tool_group(
             grid,
             row=1,
             column=1,
-            title="Automation",
+            title="Audio",
             buttons=[
                 ("Auto Pair + Play", self._auto_pair_play),
+                ("Test Audio", lambda: self._set_status("Playing test audio.")),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=2,
+            column=0,
+            title="Library",
+            buttons=[
+                ("Save Device", lambda: self._set_status("Saving device profile.")),
+                ("Paired List", self._list_paired),
+            ],
+        )
+        self._build_tool_group(
+            grid,
+            row=2,
+            column=1,
+            title="Shortcuts",
+            buttons=[
                 ("Last Device", lambda: self._set_status("Connecting last device.")),
+                ("Clear List", self._clear_devices),
             ],
         )
 
@@ -721,7 +742,7 @@ class BluetoothScreen(BaseScreen):
         self._set_status(f"Found {len(devices)} device(s).")
 
     def _list_known(self) -> None:
-        devices = self._client.scan(timeout_s=1)
+        devices = self._client.list_paired()
         self._device_list.delete(0, tk.END)
         for device in devices:
             self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
@@ -751,6 +772,14 @@ class BluetoothScreen(BaseScreen):
         self._client.connect_a2dp(address)
         self._set_status(f"Connected audio to {address}.")
 
+    def _disconnect_audio(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.disconnect(address)
+        self._set_status(f"Disconnected {address}.")
+
     def _auto_pair_play(self) -> None:
         address = self._device_address()
         if not address:
@@ -758,6 +787,25 @@ class BluetoothScreen(BaseScreen):
             return
         self._client.auto_pair_and_play(address)
         self._set_status(f"Auto paired and connected {address}.")
+
+    def _list_paired(self) -> None:
+        devices = self._client.list_paired()
+        self._device_list.delete(0, tk.END)
+        for device in devices:
+            self._device_list.insert(tk.END, f"[{device.address}] {device.name}")
+        self._set_status("Showing paired devices.")
+
+    def _forget_device(self) -> None:
+        address = self._device_address()
+        if not address:
+            self._set_status("Enter a device address.")
+            return
+        self._client.remove(address)
+        self._set_status(f"Removed {address}.")
+
+    def _clear_devices(self) -> None:
+        self._device_list.delete(0, tk.END)
+        self._set_status("Cleared device list.")
 
 
 class SystemScreen(BaseScreen):

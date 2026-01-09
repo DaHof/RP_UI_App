@@ -18,6 +18,9 @@ class BlueZClient:
         self._run(["bluetoothctl", "--timeout", str(timeout_s), "scan", "on"])
         return self._parse_devices(self._run(["bluetoothctl", "devices"]))
 
+    def list_paired(self) -> List[BluetoothDevice]:
+        return self._parse_devices(self._run(["bluetoothctl", "paired-devices"]))
+
     def pair(self, address: str) -> None:
         self._run(["bluetoothctl", "pair", address])
 
@@ -26,6 +29,12 @@ class BlueZClient:
 
     def connect_a2dp(self, address: str) -> None:
         self._run(["bluetoothctl", "connect", address])
+
+    def disconnect(self, address: str) -> None:
+        self._run(["bluetoothctl", "disconnect", address])
+
+    def remove(self, address: str) -> None:
+        self._run(["bluetoothctl", "remove", address])
 
     def auto_pair_and_play(self, address: str) -> None:
         self.pair(address)
