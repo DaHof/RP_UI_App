@@ -213,9 +213,9 @@ class App(tk.Tk):
                 ttk.Button(
                     self._subnav,
                     text=label,
-                    style="Nav.TButton",
+                    style="Small.TButton",
                     command=lambda screen_name=label: ir_screen.show_subscreen(screen_name),
-                ).pack(side=tk.LEFT, padx=6, pady=6)
+                ).pack(side=tk.LEFT, padx=4, pady=4)
             self.show_screen("IR")
             ir_screen.show_subscreen("Capture")
         elif name == "Bluetooth":
@@ -607,7 +607,7 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Capture",
+            title="",
             buttons=[
                 ("Start Capture", self._start_capture),
                 ("Recent Captures", self._show_recent_captures),
@@ -617,10 +617,10 @@ class IRScreen(BaseScreen):
 
         captures = ttk.Frame(frame, style="Card.TFrame")
         captures.pack(fill=tk.X, pady=6)
-        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(8, 4))
+        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(6, 4))
         self._capture_list = tk.Listbox(
             captures,
-            height=5,
+            height=4,
             bg=self._app._colors["panel"],
             fg=self._app._colors["text"],
             selectbackground=self._app._colors["accent"],
@@ -639,7 +639,7 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Library",
+            title="",
             buttons=[
                 ("Browse Signals", lambda: self._set_status("Browse saved IR signals.")),
                 ("Send Selected", lambda: self._set_status("Send selected IR signal.")),
@@ -651,7 +651,7 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Remote",
+            title="",
             buttons=[
                 ("Pick Device", lambda: self._set_status("Select a device profile.")),
                 ("Favorites", lambda: self._set_status("Open favorite buttons.")),
@@ -663,7 +663,7 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Learn / Pair",
+            title="",
             buttons=[
                 ("Guided Learn", lambda: self._set_status("Start guided learning.")),
                 ("Edit Profile", lambda: self._set_status("Edit device mappings.")),
@@ -675,7 +675,7 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Send",
+            title="",
             buttons=[
                 ("Protocol Send", lambda: self._set_status("Send by protocol.")),
                 ("Raw Send", lambda: self._set_status("Send raw timings.")),
@@ -687,12 +687,26 @@ class IRScreen(BaseScreen):
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         self._build_tool_group(
             frame,
-            title="Settings",
+            title="",
             buttons=[
                 ("IR Hardware", lambda: self._set_status("Open IR settings.")),
                 ("Import/Export", lambda: self._set_status("Import or export signals.")),
             ],
         )
+        pin_status = ttk.Frame(frame, style="Card.TFrame")
+        pin_status.pack(fill=tk.X, pady=6)
+        ttk.Label(pin_status, text="IR Pins", style="Status.TLabel").pack(pady=(6, 2))
+        ttk.Label(
+            pin_status,
+            text=f"TX: {self._app.ir_tx_pin()} | RX: {self._app.ir_rx_pin()}",
+            style="Body.TLabel",
+        ).pack(pady=(0, 6))
+        ttk.Button(
+            pin_status,
+            text="Edit Pins in Settings",
+            style="Secondary.TButton",
+            command=self._open_ir_pin_settings,
+        ).pack(pady=(0, 8))
         debug = ttk.Frame(frame, style="Card.TFrame")
         debug.pack(fill=tk.X, pady=6)
         ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
@@ -721,7 +735,8 @@ class IRScreen(BaseScreen):
     ) -> None:
         card = ttk.Frame(master, style="Card.TFrame")
         card.pack(fill=tk.X, pady=6)
-        ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
+        if title:
+            ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
         button_row = ttk.Frame(card, style="Card.TFrame")
         button_row.pack(fill=tk.X, padx=8, pady=8)
         for index, (label, command) in enumerate(buttons):
@@ -779,6 +794,10 @@ class IRScreen(BaseScreen):
         tx_pin = self._app.ir_tx_pin()
         rx_pin = self._app.ir_rx_pin()
         self._debug_status.set(f"IR pins set to TX: {tx_pin}, RX: {rx_pin}.")
+
+    def _open_ir_pin_settings(self) -> None:
+        self._app.show_section("Scan")
+        self._app.show_screen("Settings")
 
 
 class WiFiScreen(BaseScreen):
