@@ -1044,6 +1044,12 @@ class IRScreen(BaseScreen):
         if name == "Saved Remotes":
             self._refresh_saved_remotes()
 
+    def __run_ir_test(self) -> None:
+        self._app.show_section("System")
+        system_screen = self._app._screens.get("System")
+        if system_screen and hasattr(system_screen, "show_diagnostics_tab"):
+            system_screen.show_diagnostics_tab()
+
     def _build_universal_screen(self) -> tk.Frame:
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
         frame.columnconfigure(1, weight=1)
@@ -2281,6 +2287,10 @@ class SystemScreen(BaseScreen):
     def show_pins_tab(self) -> None:
         if hasattr(self, "_tabs"):
             self._tabs.select(1)
+
+    def show_diagnostics_tab(self) -> None:
+        if hasattr(self, "_tabs"):
+            self._tabs.select(2)
 
     def refresh(self) -> None:
         self._refresh_boot_diagnostic()
