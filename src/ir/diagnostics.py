@@ -318,7 +318,8 @@ class IRDiagnosticService:
     def _select_rx_device(self, devices: list[str]) -> Optional[str]:
         if not devices or not shutil.which("mode2"):
             return None
-        for device in devices:
+        preferred = sorted(devices, key=lambda dev: (dev != "/dev/lirc1", dev))
+        for device in preferred:
             output = self._capture_mode2(device, duration=0.5)
             if "Invalid argument" in output or "invalid argument" in output:
                 continue
