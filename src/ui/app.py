@@ -498,7 +498,7 @@ class HomeScreen(BaseScreen):
         self._content.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
 
         top_row = ttk.Frame(self._content, style="App.TFrame")
-        top_row.pack(pady=(6, 8))
+        top_row.pack(fill=tk.X, pady=(6, 8))
 
         if self._app._gif_frames:
             gif_w, gif_h = self._app._gif_target_size
@@ -510,7 +510,7 @@ class HomeScreen(BaseScreen):
                 highlightthickness=0,
                 bg=theme_bg,
             )
-            gif_canvas.pack(expand=True)
+            gif_canvas.pack(anchor="w")
             image_id = gif_canvas.create_image(
                 gif_w // 2,
                 gif_h // 2,
@@ -527,13 +527,15 @@ class HomeScreen(BaseScreen):
                 top_row,
                 text="GIF missing: data/assets/main.gif",
                 style="Muted.TLabel",
-            ).pack(expand=True)
+            ).pack(anchor="w")
 
         status_card = ttk.Frame(self._content, style="Card.TFrame")
-        status_card.pack(fill=tk.X, padx=80, pady=(0, 6))
-        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(pady=(8, 4))
+        status_card.pack(fill=tk.X, expand=True, padx=16, pady=(0, 6), anchor="w")
+        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
+            pady=(8, 4), anchor="w", padx=12
+        )
         self._status_host = ttk.Frame(status_card, style="Card.TFrame")
-        self._status_host.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
         self._build_status_rows()
 
     def refresh(self) -> None:
@@ -557,7 +559,7 @@ class HomeScreen(BaseScreen):
 
         for name in enabled_modules:
             row = ttk.Frame(self._status_host, style="Card.TFrame")
-            row.pack(fill=tk.X, pady=4)
+            row.pack(fill=tk.X, pady=4, anchor="w")
             if name == "IR":
                 ttk.Label(row, text="IR RX", style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
                 self._ir_rx_canvas = self._make_status_light(row)
