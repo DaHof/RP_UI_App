@@ -510,7 +510,7 @@ class HomeScreen(BaseScreen):
                 highlightthickness=0,
                 bg=theme_bg,
             )
-            gif_canvas.pack(anchor="w")
+            gif_canvas.pack(anchor="e")
             image_id = gif_canvas.create_image(
                 gif_w // 2,
                 gif_h // 2,
@@ -527,7 +527,7 @@ class HomeScreen(BaseScreen):
                 top_row,
                 text="GIF missing: data/assets/main.gif",
                 style="Muted.TLabel",
-            ).pack(anchor="w")
+            ).pack(anchor="e")
 
         status_card = ttk.Frame(self._content, style="Card.TFrame")
         status_card.pack(fill=tk.X, expand=True, padx=16, pady=(0, 6), anchor="w")
