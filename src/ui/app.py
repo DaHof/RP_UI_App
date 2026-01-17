@@ -500,6 +500,15 @@ class HomeScreen(BaseScreen):
         top_row = ttk.Frame(self._content, style="App.TFrame")
         top_row.pack(fill=tk.X, pady=(6, 8))
 
+        status_card = ttk.Frame(top_row, style="Card.TFrame")
+        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 16))
+        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
+            pady=(8, 4), anchor="w", padx=12
+        )
+        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
+        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
+        self._build_status_rows()
+
         if self._app._gif_frames:
             gif_w, gif_h = self._app._gif_target_size
             theme_bg = ttk.Style().lookup("TFrame", "background") or self._app._colors["bg"]
@@ -510,7 +519,7 @@ class HomeScreen(BaseScreen):
                 highlightthickness=0,
                 bg=theme_bg,
             )
-            gif_canvas.pack(anchor="e")
+            gif_canvas.pack(side=tk.RIGHT, anchor="e")
             image_id = gif_canvas.create_image(
                 gif_w // 2,
                 gif_h // 2,
@@ -527,16 +536,7 @@ class HomeScreen(BaseScreen):
                 top_row,
                 text="GIF missing: data/assets/main.gif",
                 style="Muted.TLabel",
-            ).pack(anchor="e")
-
-        status_card = ttk.Frame(self._content, style="Card.TFrame")
-        status_card.pack(fill=tk.X, expand=True, padx=16, pady=(0, 6), anchor="w")
-        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
-            pady=(8, 4), anchor="w", padx=12
-        )
-        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
-        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
-        self._build_status_rows()
+            ).pack(side=tk.RIGHT, anchor="e")
 
     def refresh(self) -> None:
         self._build_status_rows()
