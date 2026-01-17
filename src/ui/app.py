@@ -500,6 +500,15 @@ class HomeScreen(BaseScreen):
         top_row = ttk.Frame(self._content, style="App.TFrame")
         top_row.pack(fill=tk.X, pady=(6, 8))
 
+        status_card = ttk.Frame(top_row, style="Card.TFrame")
+        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 16))
+        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
+            pady=(8, 4), anchor="w", padx=12
+        )
+        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
+        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
+        self._build_status_rows()
+
         if self._app._gif_frames:
             gif_w, gif_h = self._app._gif_target_size
             theme_bg = ttk.Style().lookup("TFrame", "background") or self._app._colors["bg"]
@@ -510,7 +519,7 @@ class HomeScreen(BaseScreen):
                 highlightthickness=0,
                 bg=theme_bg,
             )
-            gif_canvas.pack(anchor="e")
+            gif_canvas.pack(side=tk.RIGHT, anchor="e")
             image_id = gif_canvas.create_image(
                 gif_w // 2,
                 gif_h // 2,
@@ -527,16 +536,7 @@ class HomeScreen(BaseScreen):
                 top_row,
                 text="GIF missing: data/assets/main.gif",
                 style="Muted.TLabel",
-            ).pack(anchor="e")
-
-        status_card = ttk.Frame(self._content, style="Card.TFrame")
-        status_card.pack(fill=tk.X, expand=True, padx=16, pady=(0, 6), anchor="w")
-        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
-            pady=(8, 4), anchor="w", padx=12
-        )
-        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
-        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
-        self._build_status_rows()
+            ).pack(side=tk.RIGHT, anchor="e")
 
     def refresh(self) -> None:
         self._build_status_rows()
@@ -836,6 +836,7 @@ class SettingsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="Settings", style="Title.TLabel").pack(pady=10)
+        self._ir_test_status = tk.StringVar(value="Run the IR test to verify devices.")
 
         conn_frame = ttk.Frame(self, style="Card.TFrame")
         conn_frame.pack(pady=8)
@@ -847,7 +848,37 @@ class SettingsScreen(BaseScreen):
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
 
+        ir_test_card = ttk.Frame(self, style="Card.TFrame")
+        ir_test_card.pack(pady=8, padx=16, fill=tk.X)
+        ttk.Label(ir_test_card, text="IR Diagnostics", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        ttk.Button(
+            ir_test_card,
+            text="Run IR Test",
+            style="Secondary.TButton",
+            command=self._run_ir_test,
+        ).pack(pady=4, padx=8, fill=tk.X)
+        ttk.Label(
+            ir_test_card,
+            textvariable=self._ir_test_status,
+            style="Muted.TLabel",
+        ).pack(pady=(4, 8), padx=8, anchor="w")
+
         # IR pins moved to System screen.
+
+    def _run_ir_test(self) -> None:
+        devices = sorted(Path("/dev").glob("lirc*"))
+        if devices:
+            device_list = ", ".join(str(device) for device in devices)
+            message = f"Detected IR devices: {device_list}."
+        else:
+            message = "No /dev/lirc* devices found."
+        self._ir_test_status.set(message)
+        rx_status = "detected" if self._app._ir_detected["rx"] else "not detected"
+        tx_status = "detected" if self._app._ir_detected["tx"] else "not detected"
+        self._app.log_feature("IR", f"IR test: {message}")
+        self._app.log_feature("IR", f"IR test: RX {rx_status}, TX {tx_status}.")
 
 
 
