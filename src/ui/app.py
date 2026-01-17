@@ -865,6 +865,7 @@ class SettingsScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         ttk.Label(self, text="Settings", style="Title.TLabel").pack(pady=10)
+        self._ir_test_status = tk.StringVar(value="Run the IR test to verify devices.")
 
         conn_frame = ttk.Frame(self, style="Card.TFrame")
         conn_frame.pack(pady=8)
@@ -876,7 +877,37 @@ class SettingsScreen(BaseScreen):
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
 
+        ir_test_card = ttk.Frame(self, style="Card.TFrame")
+        ir_test_card.pack(pady=8, padx=16, fill=tk.X)
+        ttk.Label(ir_test_card, text="IR Diagnostics", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        ttk.Button(
+            ir_test_card,
+            text="Run IR Test",
+            style="Secondary.TButton",
+            command=self._run_ir_test,
+        ).pack(pady=4, padx=8, fill=tk.X)
+        ttk.Label(
+            ir_test_card,
+            textvariable=self._ir_test_status,
+            style="Muted.TLabel",
+        ).pack(pady=(4, 8), padx=8, anchor="w")
+
         # IR pins moved to System screen.
+
+    def _run_ir_test(self) -> None:
+        devices = sorted(Path("/dev").glob("lirc*"))
+        if devices:
+            device_list = ", ".join(str(device) for device in devices)
+            message = f"Detected IR devices: {device_list}."
+        else:
+            message = "No /dev/lirc* devices found."
+        self._ir_test_status.set(message)
+        rx_status = "detected" if self._app._ir_detected["rx"] else "not detected"
+        tx_status = "detected" if self._app._ir_detected["tx"] else "not detected"
+        self._app.log_feature("IR", f"IR test: {message}")
+        self._app.log_feature("IR", f"IR test: RX {rx_status}, TX {tx_status}.")
 
 
 
@@ -897,6 +928,7 @@ class IRScreen(BaseScreen):
         self._last_capture: Optional[dict[str, str]] = None
         self._capture_thread: Optional[threading.Thread] = None
         self._capture_stop = threading.Event()
+        self._ir_test_status = tk.StringVar(value="Run the IR test to verify devices.")
         self._client = LircClient()
 
         self._data_dir = Path(__file__).resolve().parents[2] / "data"
@@ -1221,6 +1253,23 @@ class IRScreen(BaseScreen):
             style="Secondary.TButton",
             command=self._open_ir_pin_settings,
         ).pack(pady=(0, 8))
+
+        ir_test_card = ttk.Frame(frame, style="Card.TFrame")
+        ir_test_card.pack(fill=tk.X, pady=6)
+        ttk.Label(ir_test_card, text="IR Diagnostics", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        ttk.Button(
+            ir_test_card,
+            text="Run IR Test",
+            style="Secondary.TButton",
+            command=self._run_ir_test,
+        ).pack(pady=4, padx=8, fill=tk.X)
+        ttk.Label(
+            ir_test_card,
+            textvariable=self._ir_test_status,
+            style="Muted.TLabel",
+        ).pack(pady=(4, 8), padx=8, anchor="w")
         return frame
 
     def _set_status(self, message: str) -> None:
