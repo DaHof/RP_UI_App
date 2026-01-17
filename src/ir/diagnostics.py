@@ -24,6 +24,15 @@ class DiagnosticResult:
     suggested_fixes: list[str]
     timestamp: str
 
+    def summary_line(self) -> str:
+        parts = []
+        for step in self.steps:
+            details = ""
+            if step.details and step.status != "PASS":
+                details = f" ({step.details})"
+            parts.append(f"{step.name}: {step.status}{details}")
+        return " / ".join(parts)
+
 
 class IRDiagnosticService:
     def __init__(self, logger: Optional[Callable[[str], None]] = None) -> None:
