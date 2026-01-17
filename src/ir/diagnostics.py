@@ -24,6 +24,15 @@ class DiagnosticResult:
     suggested_fixes: list[str]
     timestamp: str
 
+    def summary_line(self) -> str:
+        parts = []
+        for step in self.steps:
+            details = ""
+            if step.details and step.status != "PASS":
+                details = f" ({step.details})"
+            parts.append(f"{step.name}: {step.status}{details}")
+        return " / ".join(parts)
+
 
 class IRDiagnosticService:
     def __init__(self, logger: Optional[Callable[[str], None]] = None) -> None:
@@ -309,7 +318,8 @@ class IRDiagnosticService:
     def _select_rx_device(self, devices: list[str]) -> Optional[str]:
         if not devices or not shutil.which("mode2"):
             return None
-        for device in devices:
+        preferred = sorted(devices, key=lambda dev: (dev != "/dev/lirc1", dev))
+        for device in preferred:
             output = self._capture_mode2(device, duration=0.5)
             if "Invalid argument" in output or "invalid argument" in output:
                 continue

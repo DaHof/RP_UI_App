@@ -337,6 +337,7 @@ class App(tk.Tk):
         result = self._ir_diagnostics.run_boot_diagnostic()
         self._ir_boot_diagnostic = result
         self.log_feature("IR", f"Boot diagnostic complete: {result.status}")
+        self.log_feature("IR", f"Boot diagnostic summary: {result.summary_line()}")
         for step in result.steps:
             self.log_feature("IR", f"Boot {step.name}: {step.status} {step.details}")
         self.after(0, self._notify_boot_diagnostic_ready)
@@ -2350,7 +2351,9 @@ class SystemScreen(BaseScreen):
         self._ir_diag_status.set(f"{step.name}: {step.status}")
 
     def _finish_ir_diag(self, result: DiagnosticResult) -> None:
-        self._ir_diag_status.set(f"Overall status: {result.status}")
+        self._ir_diag_status.set(
+            f"Overall status: {result.status} | {result.summary_line()}"
+        )
         fixes = result.suggested_fixes
         if fixes:
             self._ir_diag_fixes.set("Suggested fixes: " + " | ".join(fixes))
