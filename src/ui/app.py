@@ -261,16 +261,19 @@ class App(tk.Tk):
         window = tk.Toplevel(self)
         window.title("Debug Console")
         window.geometry("420x220")
-        window.configure(bg=self._colors["bg"])
+        theme_bg = ttk.Style().lookup("TFrame", "background") or self._colors["bg"]
+        theme_fg = ttk.Style().lookup("TLabel", "foreground") or self._colors["text"]
+        entry_bg = ttk.Style().lookup("TEntry", "fieldbackground") or theme_bg
+        window.configure(bg=theme_bg)
         window.resizable(True, True)
         self._debug_window = window
 
         text = tk.Text(
             window,
             height=8,
-            bg=self._colors["panel_alt"],
-            fg=self._colors["text"],
-            insertbackground=self._colors["accent"],
+            bg=entry_bg,
+            fg=theme_fg,
+            insertbackground=theme_fg,
             wrap=tk.WORD,
         )
         text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
@@ -876,6 +879,8 @@ class IRScreen(BaseScreen):
         self._saved_remotes: list[str] = []
         self._saved_buttons: list[str] = []
         self._selected_saved_remote_signals: list[FlipperIRSignal] = []
+        self._saved_tree_nodes: dict[str, str] = {}
+        self._saved_remote_items: dict[str, str] = {}
 
         self._universal_device = tk.StringVar(value="TV")
         self._universal_selected_button = tk.StringVar(value="Select a button")
@@ -984,22 +989,22 @@ class IRScreen(BaseScreen):
         device_card = ttk.Frame(frame, style="Card.TFrame")
         device_card.grid(row=0, column=0, sticky="ns", padx=(0, 10), pady=6)
         ttk.Label(device_card, text="Devices", style="Status.TLabel").pack(pady=(8, 4))
-        self._universal_device_list = tk.Listbox(
+        self._universal_device_list = ttk.Treeview(
             device_card,
-            height=8,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
-            highlightthickness=0,
-            relief=tk.FLAT,
+            show="tree",
+            selectmode="browse",
+            height=7,
         )
         self._universal_device_list.pack(fill=tk.BOTH, padx=8, pady=(0, 8))
-        self._universal_device_list.bind("<<ListboxSelect>>", self._on_universal_device_select)
-
+        self._universal_device_list.bind(
+            "<<TreeviewSelect>>", self._on_universal_device_select
+        )
         for device in self._universal_layouts.keys():
-            self._universal_device_list.insert(tk.END, device)
-        self._universal_device_list.selection_set(0)
+            self._universal_device_list.insert("", tk.END, text=device)
+        first = self._universal_device_list.get_children()
+        if first:
+            self._universal_device_list.selection_set(first[0])
+            self._universal_device_list.see(first[0])
 
         right = ttk.Frame(frame, style="App.TFrame")
         right.grid(row=0, column=1, sticky="nsew")
@@ -1061,10 +1066,12 @@ class IRScreen(BaseScreen):
         self._learn_capture_list = tk.Listbox(
             captures,
             height=8,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
+            bg=ttk.Style().lookup("TFrame", "background") or self._app._colors["bg"],
+            fg=ttk.Style().lookup("TLabel", "foreground") or self._app._colors["text"],
+            selectbackground=ttk.Style().lookup("Treeview", "selectbackground")
+            or self._app._colors["accent"],
+            selectforeground=ttk.Style().lookup("Treeview", "selectforeground")
+            or self._app._colors["text"],
             highlightthickness=0,
             relief=tk.FLAT,
         )
@@ -1101,18 +1108,16 @@ class IRScreen(BaseScreen):
         left = ttk.Frame(frame, style="Card.TFrame")
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=6)
         ttk.Label(left, text="Saved Remotes", style="Status.TLabel").pack(pady=(8, 4))
-        self._saved_remote_list = tk.Listbox(
+        self._saved_remote_list = ttk.Treeview(
             left,
+            show="tree",
+            selectmode="browse",
             height=10,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
-            highlightthickness=0,
-            relief=tk.FLAT,
         )
         self._saved_remote_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 6))
-        self._saved_remote_list.bind("<<ListboxSelect>>", self._on_saved_remote_select)
+        self._saved_remote_list.bind(
+            "<<TreeviewSelect>>", self._on_saved_remote_select
+        )
         ttk.Label(left, textvariable=self._saved_detail, style="Muted.TLabel").pack(
             pady=(0, 8)
         )
@@ -1128,18 +1133,16 @@ class IRScreen(BaseScreen):
         button_card = ttk.Frame(right, style="Card.TFrame")
         button_card.pack(fill=tk.BOTH, expand=True, pady=6)
         ttk.Label(button_card, text="Buttons", style="Status.TLabel").pack(pady=(8, 4))
-        self._saved_button_list = tk.Listbox(
+        self._saved_button_list = ttk.Treeview(
             button_card,
+            show="tree",
+            selectmode="browse",
             height=6,
-            bg=self._app._colors["panel"],
-            fg=self._app._colors["text"],
-            selectbackground=self._app._colors["accent"],
-            selectforeground="#0b1020",
-            highlightthickness=0,
-            relief=tk.FLAT,
         )
         self._saved_button_list.pack(fill=tk.X, padx=8, pady=(0, 6))
-        self._saved_button_list.bind("<<ListboxSelect>>", self._on_saved_button_select)
+        self._saved_button_list.bind(
+            "<<TreeviewSelect>>", self._on_saved_button_select
+        )
         ttk.Label(button_card, textvariable=self._saved_button_detail, style="Muted.TLabel").pack(
             pady=(0, 8)
         )
@@ -1309,45 +1312,72 @@ class IRScreen(BaseScreen):
     def _refresh_saved_remotes(self) -> None:
         self._saved_remotes = [remote.name for remote in self._ir_library.list_remotes()]
         if hasattr(self, "_saved_remote_list"):
-            self._saved_remote_list.delete(0, tk.END)
+            for item in self._saved_remote_list.get_children():
+                self._saved_remote_list.delete(item)
+            self._saved_tree_nodes.clear()
+            self._saved_remote_items.clear()
             for remote in self._saved_remotes:
-                self._saved_remote_list.insert(tk.END, remote)
+                parts = remote.split("/")
+                parent = ""
+                path = ""
+                for idx, part in enumerate(parts):
+                    path = f"{path}/{part}" if path else part
+                    if idx == len(parts) - 1:
+                        item_id = self._saved_remote_list.insert(parent, tk.END, text=part)
+                        self._saved_remote_items[item_id] = remote
+                    else:
+                        if path in self._saved_tree_nodes:
+                            parent = self._saved_tree_nodes[path]
+                        else:
+                            folder_id = self._saved_remote_list.insert(parent, tk.END, text=part)
+                            self._saved_tree_nodes[path] = folder_id
+                            parent = folder_id
         self._saved_detail.set("Select a remote")
         self._saved_buttons = []
         self._selected_saved_remote_signals = []
         if hasattr(self, "_saved_button_list"):
-            self._saved_button_list.delete(0, tk.END)
+            for item in self._saved_button_list.get_children():
+                self._saved_button_list.delete(item)
         self._saved_button_detail.set("Select a button")
         self._render_saved_button_grid()
 
     def _select_saved_remote(self, name: str) -> None:
         if name not in self._saved_remotes:
             return
-        index = self._saved_remotes.index(name)
         if hasattr(self, "_saved_remote_list"):
-            self._saved_remote_list.selection_clear(0, tk.END)
-            self._saved_remote_list.selection_set(index)
-            self._saved_remote_list.event_generate("<<ListboxSelect>>")
+            for item, remote in self._saved_remote_items.items():
+                if remote == name:
+                    self._saved_remote_list.selection_set(item)
+                    self._saved_remote_list.see(item)
+                    self._saved_remote_list.event_generate("<<TreeviewSelect>>")
+                    break
 
     def _on_saved_remote_select(self, event: tk.Event) -> None:
-        if not self._saved_remote_list.curselection():
+        selection = self._saved_remote_list.selection()
+        if not selection:
             return
-        index = self._saved_remote_list.curselection()[0]
-        name = self._saved_remotes[index]
+        item = selection[0]
+        if item not in self._saved_remote_items:
+            is_open = self._saved_remote_list.item(item, "open")
+            self._saved_remote_list.item(item, open=not is_open)
+            return
+        name = self._saved_remote_items[item]
         signals = self._ir_library.load_remote(name) or []
         self._selected_saved_remote_signals = signals
         self._saved_buttons = [signal.name for signal in signals]
         self._saved_detail.set(f"{name} ({len(signals)} buttons)")
-        self._saved_button_list.delete(0, tk.END)
+        for item in self._saved_button_list.get_children():
+            self._saved_button_list.delete(item)
         for button in self._saved_buttons:
-            self._saved_button_list.insert(tk.END, button)
+            self._saved_button_list.insert("", tk.END, text=button)
         self._saved_button_detail.set("Select a button")
         self._render_saved_button_grid()
 
     def _on_saved_button_select(self, event: tk.Event) -> None:
-        if not self._saved_button_list.curselection():
+        selection = self._saved_button_list.selection()
+        if not selection:
             return
-        index = self._saved_button_list.curselection()[0]
+        index = self._saved_button_list.index(selection[0])
         signal = self._selected_saved_remote_signals[index]
         self._saved_button_detail.set(
             f"{signal.name} | {signal.protocol} | {signal.address} | {signal.command}"
@@ -1374,11 +1404,12 @@ class IRScreen(BaseScreen):
     def _send_saved_button(self, signal: "FlipperIRSignal") -> None:
         self._set_status(f"Sending {signal.name} (stub).")
     def _open_saved_editor(self) -> None:
-        if not self._saved_remote_list.curselection():
+        selection = self._saved_remote_list.selection()
+        if not selection:
             messagebox.showinfo("Saved Remotes", "Select a remote to edit.")
             return
-        index = self._saved_remote_list.curselection()[0]
-        remote_name = self._saved_remotes[index]
+        item = selection[0]
+        remote_name = self._saved_remote_list.item(item, "text")
 
         editor = tk.Toplevel(self)
         editor.title(f"Edit {remote_name}")
@@ -1441,10 +1472,11 @@ class IRScreen(BaseScreen):
         self._select_saved_remote(remote_name)
 
     def _editor_rename_button(self, remote_name: str) -> None:
-        if not self._saved_button_list.curselection():
+        selection = self._saved_button_list.selection()
+        if not selection:
             messagebox.showinfo("Rename Button", "Select a button to rename.")
             return
-        index = self._saved_button_list.curselection()[0]
+        index = self._saved_button_list.index(selection[0])
         signal = self._selected_saved_remote_signals[index]
         new_name = simpledialog.askstring("Rename Button", "Enter new button name:")
         if not new_name:
@@ -1462,10 +1494,11 @@ class IRScreen(BaseScreen):
         self._select_saved_remote(remote_name)
 
     def _editor_delete_button(self, remote_name: str) -> None:
-        if not self._saved_button_list.curselection():
+        selection = self._saved_button_list.selection()
+        if not selection:
             messagebox.showinfo("Delete Button", "Select a button to delete.")
             return
-        index = self._saved_button_list.curselection()[0]
+        index = self._saved_button_list.index(selection[0])
         signal = self._selected_saved_remote_signals[index]
         if not messagebox.askyesno("Delete Button", f"Delete {signal.name}?"):
             return
@@ -1492,10 +1525,11 @@ class IRScreen(BaseScreen):
     def _on_universal_device_select(self, event: tk.Event) -> None:
         if self._universal_scan_thread and self._universal_scan_thread.is_alive():
             return
-        if not self._universal_device_list.curselection():
+        selection = self._universal_device_list.selection()
+        if not selection:
             return
-        index = self._universal_device_list.curselection()[0]
-        device = list(self._universal_layouts.keys())[index]
+        item = selection[0]
+        device = self._universal_device_list.item(item, "text")
         self._universal_device.set(device)
         self._render_universal_buttons(device)
         self._universal_selected_button.set("Select a button")
