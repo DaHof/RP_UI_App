@@ -61,6 +61,8 @@ class IRDiagnosticService:
     ) -> DiagnosticResult:
         steps: list[DiagnosticStepResult] = []
         devices = self._detect_devices()
+        rx_device = self._select_rx_device(devices)
+        tx_device = self._select_tx_device(devices, rx_device)
         total_steps = 4 + (1 if include_rx_activity else 0)
 
         def record_step(step: DiagnosticStepResult) -> None:
@@ -78,17 +80,19 @@ class IRDiagnosticService:
         if include_rx_activity:
             if prompt:
                 prompt("Press any remote buttons within 5 seconds to test RX activity.")
-            rx_step = self._rx_activity_check(devices)
+            rx_step = self._rx_activity_check(devices, rx_device)
             record_step(rx_step)
         else:
             rx_step = None
 
-        tx_step = self._tx_send_check(devices)
+        tx_step = self._tx_send_check(devices, tx_device)
         record_step(tx_step)
 
         if mode == "settings" and prompt:
             prompt("Point the TX LED at the RX sensor to test loopback.")
-        loopback_step = self._loopback_check(devices, tx_step.status == "PASS")
+        loopback_step = self._loopback_check(
+            devices, rx_device, tx_device, tx_step.status == "PASS"
+        )
         record_step(loopback_step)
 
         suggested_fixes = self._suggest_fixes(
@@ -116,7 +120,8 @@ class IRDiagnosticService:
 
     def _driver_check(self) -> DiagnosticStepResult:
         code, stdout, stderr = self._run_command(["ir-keytable"], timeout=2.0)
-        driver_detected = bool(re.search(r"Driver|rc\d", stdout, re.IGNORECASE))
+        combined_output = " ".join(filter(None, [stdout, stderr]))
+        driver_detected = bool(re.search(r"Driver|rc\d|/sys/class/rc", combined_output, re.IGNORECASE))
         lsmod_code, lsmod_out, _ = self._run_command(["lsmod"], timeout=2.0)
         hints = self._extract_lsmod_hints(lsmod_out) if lsmod_code == 0 else ""
         details_parts = []
@@ -127,26 +132,38 @@ class IRDiagnosticService:
         if hints:
             details_parts.append(f"lsmod: {hints}")
         details = " | ".join(details_parts)
-        if code == 0 and driver_detected:
+        if driver_detected:
             return DiagnosticStepResult("Driver/Binding Check", "PASS", details)
         return DiagnosticStepResult("Driver/Binding Check", "WARN", details or "No driver info.")
 
-    def _rx_activity_check(self, devices: list[str]) -> DiagnosticStepResult:
+    def _rx_activity_check(
+        self, devices: list[str], rx_device: Optional[str]
+    ) -> DiagnosticStepResult:
         if not devices:
             return DiagnosticStepResult("RX Activity Test", "WARN", "No /dev/lirc* devices.")
+        if not rx_device:
+            return DiagnosticStepResult(
+                "RX Activity Test", "WARN", "No readable RX device detected."
+            )
         if not shutil.which("mode2"):
             return DiagnosticStepResult("RX Activity Test", "WARN", "mode2 not available.")
-        output = self._capture_mode2(devices[0], duration=5.0)
+        output = self._capture_mode2(rx_device, duration=5.0)
         if self._has_pulse(output):
             return DiagnosticStepResult("RX Activity Test", "PASS", "Pulse/space detected.")
         return DiagnosticStepResult("RX Activity Test", "WARN", "No pulse/space detected.")
 
-    def _tx_send_check(self, devices: list[str]) -> DiagnosticStepResult:
+    def _tx_send_check(
+        self, devices: list[str], tx_device: Optional[str]
+    ) -> DiagnosticStepResult:
         if not devices:
             return DiagnosticStepResult("TX Send Test", "FAIL", "No /dev/lirc* devices.")
+        if not tx_device:
+            return DiagnosticStepResult(
+                "TX Send Test", "FAIL", "No writable TX device detected."
+            )
         if not shutil.which("ir-ctl"):
             return DiagnosticStepResult("TX Send Test", "FAIL", "ir-ctl not available.")
-        command = ["ir-ctl", "-d", devices[0], "-S", "nec:0x00ff00ff"]
+        command = ["ir-ctl", "-d", tx_device, "-S", "nec:0x00ff00ff"]
         code, stdout, stderr = self._run_command(command, timeout=3.0)
         details_parts = []
         if stdout:
@@ -158,14 +175,24 @@ class IRDiagnosticService:
             return DiagnosticStepResult("TX Send Test", "PASS", details)
         return DiagnosticStepResult("TX Send Test", "FAIL", details or "ir-ctl failed.")
 
-    def _loopback_check(self, devices: list[str], tx_succeeded: bool) -> DiagnosticStepResult:
+    def _loopback_check(
+        self,
+        devices: list[str],
+        rx_device: Optional[str],
+        tx_device: Optional[str],
+        tx_succeeded: bool,
+    ) -> DiagnosticStepResult:
         if not devices:
             return DiagnosticStepResult("Loopback Test", "WARN", "No /dev/lirc* devices.")
+        if not rx_device or not tx_device:
+            return DiagnosticStepResult(
+                "Loopback Test", "WARN", "RX/TX device pairing unavailable."
+            )
         if not shutil.which("mode2") or not shutil.which("ir-ctl"):
             return DiagnosticStepResult("Loopback Test", "WARN", "mode2/ir-ctl not available.")
         if not tx_succeeded:
             return DiagnosticStepResult("Loopback Test", "WARN", "Skipped due to TX failure.")
-        output = self._loopback_capture(devices[0])
+        output = self._loopback_capture(rx_device, tx_device)
         if self._has_pulse(output):
             return DiagnosticStepResult("Loopback Test", "PASS", "Pulse/space detected.")
         return DiagnosticStepResult("Loopback Test", "WARN", "No pulse/space detected.")
@@ -251,16 +278,16 @@ class IRDiagnosticService:
             stderr = exc.stderr if isinstance(exc.stderr, str) else ""
             return stdout + stderr
 
-    def _loopback_capture(self, device: str) -> str:
+    def _loopback_capture(self, rx_device: str, tx_device: str) -> str:
         process = subprocess.Popen(
-            ["mode2", "-d", device],
+            ["mode2", "-d", rx_device],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
         try:
             subprocess.run(
-                ["ir-ctl", "-d", device, "-S", "nec:0x00ff00ff"],
+                ["ir-ctl", "-d", tx_device, "-S", "nec:0x00ff00ff"],
                 capture_output=True,
                 text=True,
                 timeout=2.0,
@@ -278,6 +305,27 @@ class IRDiagnosticService:
 
     def _has_pulse(self, output: str) -> bool:
         return bool(re.search(r"\b(pulse|space)\b", output, re.IGNORECASE))
+
+    def _select_rx_device(self, devices: list[str]) -> Optional[str]:
+        if not devices or not shutil.which("mode2"):
+            return None
+        for device in devices:
+            output = self._capture_mode2(device, duration=0.5)
+            if "Invalid argument" in output or "invalid argument" in output:
+                continue
+            return device
+        return None
+
+    def _select_tx_device(
+        self, devices: list[str], rx_device: Optional[str]
+    ) -> Optional[str]:
+        if not devices:
+            return None
+        if rx_device:
+            for device in devices:
+                if device != rx_device:
+                    return device
+        return devices[0]
 
     def _extract_lsmod_hints(self, output: str) -> str:
         lines = [
