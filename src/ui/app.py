@@ -1044,7 +1044,7 @@ class IRScreen(BaseScreen):
         if name == "Saved Remotes":
             self._refresh_saved_remotes()
 
-    def __run_ir_test(self) -> None:
+    def _run_ir_test(self) -> None:
         self._app.show_section("System")
         system_screen = self._app._screens.get("System")
         if system_screen and hasattr(system_screen, "show_diagnostics_tab"):
