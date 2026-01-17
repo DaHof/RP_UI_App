@@ -14,6 +14,7 @@ from typing import Callable, Optional
 from data_model import CardProfile
 from library_store import LibraryStore
 from pn532.reader_base import TagDetection
+from ir.diagnostics import IRDiagnosticService, DiagnosticResult, DiagnosticStepResult
 
 
 class App(tk.Tk):
@@ -43,6 +44,10 @@ class App(tk.Tk):
         self._log_enabled = tk.BooleanVar(value=self._load_log_setting())
         self._log_dir = Path(__file__).resolve().parents[2] / "data" / "logs"
         self._log_max_bytes = 1024 * 1024
+        self._ir_diagnostics = IRDiagnosticService(
+            logger=lambda message: self.log_feature("IR", message)
+        )
+        self._ir_boot_diagnostic: Optional[DiagnosticResult] = None
         self._load_main_gif()
 
         layout = ttk.Frame(self, style="App.TFrame")
@@ -81,6 +86,7 @@ class App(tk.Tk):
         self._add_screen("System", SystemScreen(self._screen_host, self))
 
         self.show_section("Home")
+        self._start_ir_boot_diagnostic()
 
     def _build_left_nav(self) -> None:
         for child in self._nav.winfo_children():
@@ -323,6 +329,29 @@ class App(tk.Tk):
         self.log_feature("Bluetooth", "Adapter detected, scan idle.")
         self.log_feature("WiFi", "Interface up, no active connection.")
 
+    def _start_ir_boot_diagnostic(self) -> None:
+        thread = threading.Thread(target=self._run_ir_boot_diagnostic, daemon=True)
+        thread.start()
+
+    def _run_ir_boot_diagnostic(self) -> None:
+        result = self._ir_diagnostics.run_boot_diagnostic()
+        self._ir_boot_diagnostic = result
+        self.log_feature("IR", f"Boot diagnostic complete: {result.status}")
+        for step in result.steps:
+            self.log_feature("IR", f"Boot {step.name}: {step.status} {step.details}")
+        self.after(0, self._notify_boot_diagnostic_ready)
+
+    def _notify_boot_diagnostic_ready(self) -> None:
+        screen = self._screens.get("System")
+        if screen and hasattr(screen, "refresh"):
+            screen.refresh()
+
+    def ir_diagnostics(self) -> IRDiagnosticService:
+        return self._ir_diagnostics
+
+    def ir_boot_diagnostic(self) -> Optional[DiagnosticResult]:
+        return self._ir_boot_diagnostic
+
     def _timestamp(self) -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -500,6 +529,15 @@ class HomeScreen(BaseScreen):
         top_row = ttk.Frame(self._content, style="App.TFrame")
         top_row.pack(fill=tk.X, pady=(6, 8))
 
+        status_card = ttk.Frame(top_row, style="Card.TFrame")
+        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 16))
+        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
+            pady=(8, 4), anchor="w", padx=12
+        )
+        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
+        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
+        self._build_status_rows()
+
         if self._app._gif_frames:
             gif_w, gif_h = self._app._gif_target_size
             theme_bg = ttk.Style().lookup("TFrame", "background") or self._app._colors["bg"]
@@ -510,7 +548,7 @@ class HomeScreen(BaseScreen):
                 highlightthickness=0,
                 bg=theme_bg,
             )
-            gif_canvas.pack(anchor="e")
+            gif_canvas.pack(side=tk.RIGHT, anchor="e")
             image_id = gif_canvas.create_image(
                 gif_w // 2,
                 gif_h // 2,
@@ -527,16 +565,7 @@ class HomeScreen(BaseScreen):
                 top_row,
                 text="GIF missing: data/assets/main.gif",
                 style="Muted.TLabel",
-            ).pack(anchor="e")
-
-        status_card = ttk.Frame(self._content, style="Card.TFrame")
-        status_card.pack(fill=tk.X, expand=True, padx=16, pady=(0, 6), anchor="w")
-        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
-            pady=(8, 4), anchor="w", padx=12
-        )
-        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
-        self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
-        self._build_status_rows()
+            ).pack(side=tk.RIGHT, anchor="e")
 
     def refresh(self) -> None:
         self._build_status_rows()
@@ -1196,6 +1225,7 @@ class IRScreen(BaseScreen):
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
+
     def _begin_learn_session(self) -> None:
         self._captures.clear()
         self._last_capture = None
@@ -2057,8 +2087,10 @@ class SystemScreen(BaseScreen):
 
         features_tab = ttk.Frame(self._tabs)
         pins_tab = ttk.Frame(self._tabs)
+        diagnostics_tab = ttk.Frame(self._tabs)
         self._tabs.add(features_tab, text="Features")
         self._tabs.add(pins_tab, text="Pins")
+        self._tabs.add(diagnostics_tab, text="Diagnostics")
 
         feature_card = ttk.Frame(features_tab, style="Card.TFrame")
         feature_card.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
@@ -2127,6 +2159,67 @@ class SystemScreen(BaseScreen):
             command=self._save_ir_pins,
         ).pack(pady=(0, 8))
 
+        boot_card = ttk.Frame(diagnostics_tab, style="Card.TFrame")
+        boot_card.pack(pady=12, padx=12, fill=tk.X)
+        ttk.Label(
+            boot_card, text="Boot IR Diagnostic", style="Status.TLabel"
+        ).pack(pady=(8, 4))
+        self._boot_diag_status = tk.StringVar(value="Pending boot diagnostic...")
+        self._boot_diag_timestamp = tk.StringVar(value="")
+        ttk.Label(
+            boot_card, textvariable=self._boot_diag_status, style="Body.TLabel"
+        ).pack(pady=(0, 2))
+        ttk.Label(
+            boot_card, textvariable=self._boot_diag_timestamp, style="Muted.TLabel"
+        ).pack(pady=(0, 8))
+
+        settings_card = ttk.Frame(diagnostics_tab, style="Card.TFrame")
+        settings_card.pack(pady=(0, 12), padx=12, fill=tk.BOTH, expand=True)
+        ttk.Label(
+            settings_card, text="IR Test (Diagnostics)", style="Status.TLabel"
+        ).pack(pady=(8, 4))
+        self._ir_diag_status = tk.StringVar(value="Idle")
+        self._ir_diag_progress = tk.DoubleVar(value=0.0)
+        ttk.Label(
+            settings_card, textvariable=self._ir_diag_status, style="Body.TLabel"
+        ).pack(pady=(0, 4))
+        self._ir_diag_progress_bar = ttk.Progressbar(
+            settings_card,
+            variable=self._ir_diag_progress,
+            maximum=5.0,
+            mode="determinate",
+        )
+        self._ir_diag_progress_bar.pack(fill=tk.X, padx=12, pady=(0, 8))
+        ttk.Button(
+            settings_card,
+            text="Run IR Test",
+            style="Secondary.TButton",
+            command=self._run_ir_settings_diagnostic,
+        ).pack(pady=(0, 8), padx=12, fill=tk.X)
+        self._ir_diag_steps = ttk.Treeview(
+            settings_card,
+            columns=("status", "details"),
+            show="tree headings",
+            height=6,
+        )
+        self._ir_diag_steps.heading("status", text="Status")
+        self._ir_diag_steps.heading("details", text="Details")
+        self._ir_diag_steps.heading("#0", text="Step")
+        self._ir_diag_steps.column("#0", width=160, anchor="w")
+        self._ir_diag_steps.column("status", width=80, anchor="center")
+        self._ir_diag_steps.column("details", width=360, anchor="w")
+        self._ir_diag_steps.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
+        self._ir_diag_step_nodes: dict[str, str] = {}
+        self._ir_diag_fixes = tk.StringVar(value="")
+        ttk.Label(
+            settings_card,
+            textvariable=self._ir_diag_fixes,
+            style="Muted.TLabel",
+            wraplength=420,
+            justify=tk.LEFT,
+        ).pack(pady=(0, 8), padx=12, anchor="w")
+        self.refresh()
+
     def _save_features(self) -> None:
         flags = {name: var.get() for name, var in self._feature_vars.items()}
         self._app.set_feature_flags(flags)
@@ -2139,6 +2232,71 @@ class SystemScreen(BaseScreen):
     def show_pins_tab(self) -> None:
         if hasattr(self, "_tabs"):
             self._tabs.select(1)
+
+    def refresh(self) -> None:
+        self._refresh_boot_diagnostic()
+
+    def _refresh_boot_diagnostic(self) -> None:
+        result = self._app.ir_boot_diagnostic()
+        if not result:
+            self._boot_diag_status.set("Pending boot diagnostic...")
+            self._boot_diag_timestamp.set("")
+            return
+        self._boot_diag_status.set(f"Overall status: {result.status}")
+        self._boot_diag_timestamp.set(f"Timestamp: {result.timestamp}")
+
+    def _run_ir_settings_diagnostic(self) -> None:
+        if hasattr(self, "_ir_diag_thread") and self._ir_diag_thread.is_alive():
+            return
+        for item in self._ir_diag_steps.get_children():
+            self._ir_diag_steps.delete(item)
+        self._ir_diag_step_nodes.clear()
+        self._ir_diag_status.set("Running IR diagnostics...")
+        self._ir_diag_fixes.set("")
+        self._ir_diag_progress_bar.configure(maximum=5.0)
+        self._ir_diag_progress.set(0.0)
+
+        def prompt(message: str) -> None:
+            self._app.after(
+                0, lambda: messagebox.showinfo("IR Diagnostic", message, parent=self)
+            )
+
+        def progress(step: DiagnosticStepResult, index: int, total: int) -> None:
+            self._app.after(
+                0, lambda: self._update_ir_diag_step(step, index, total)
+            )
+
+        def run_diag() -> None:
+            result = self._app.ir_diagnostics().run_settings_diagnostic(
+                prompt=prompt, progress=progress
+            )
+            self._app.after(0, lambda: self._finish_ir_diag(result))
+
+        self._ir_diag_thread = threading.Thread(target=run_diag, daemon=True)
+        self._ir_diag_thread.start()
+
+    def _update_ir_diag_step(
+        self, step: DiagnosticStepResult, index: int, total: int
+    ) -> None:
+        node = self._ir_diag_step_nodes.get(step.name)
+        if node:
+            self._ir_diag_steps.item(node, values=(step.status, step.details))
+        else:
+            node = self._ir_diag_steps.insert(
+                "", tk.END, text=step.name, values=(step.status, step.details)
+            )
+            self._ir_diag_step_nodes[step.name] = node
+        self._ir_diag_progress_bar.configure(maximum=float(total))
+        self._ir_diag_progress.set(float(index))
+        self._ir_diag_status.set(f"{step.name}: {step.status}")
+
+    def _finish_ir_diag(self, result: DiagnosticResult) -> None:
+        self._ir_diag_status.set(f"Overall status: {result.status}")
+        fixes = result.suggested_fixes
+        if fixes:
+            self._ir_diag_fixes.set("Suggested fixes: " + " | ".join(fixes))
+        else:
+            self._ir_diag_fixes.set("Suggested fixes: None.")
 
 
 class ProxmarkScreen(BaseScreen):
