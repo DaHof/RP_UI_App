@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
@@ -27,6 +29,21 @@ class App(tk.Tk):
         self._current_profile: Optional[CardProfile] = None
         self._ir_tx_pin = tk.StringVar(value="GPIO18 (Pin 12)")
         self._ir_rx_pin = tk.StringVar(value="GPIO23 (Pin 16)")
+        self._feature_flags = self._load_feature_flags()
+        self._ir_detected = {"rx": False, "tx": False}
+        self._gif_frames: list[tk.PhotoImage] = []
+        self._gif_label: Optional[ttk.Label] = None
+        self._gif_frame_index = 0
+        self._gif_animation_id: Optional[str] = None
+        self._gif_update_image: Optional[Callable[[tk.PhotoImage], None]] = None
+        self._gif_target_size = (340, 340)
+        self._debug_window: Optional[tk.Toplevel] = None
+        self._debug_text: Optional[tk.Text] = None
+        self._debug_enabled = tk.BooleanVar(value=False)
+        self._log_enabled = tk.BooleanVar(value=self._load_log_setting())
+        self._log_dir = Path(__file__).resolve().parents[2] / "data" / "logs"
+        self._log_max_bytes = 1024 * 1024
+        self._load_main_gif()
 
         layout = ttk.Frame(self, style="App.TFrame")
         layout.pack(fill=tk.BOTH, expand=True)
@@ -51,6 +68,7 @@ class App(tk.Tk):
 
         self._build_left_nav()
 
+        self._add_screen("Home", HomeScreen(self._screen_host, self))
         self._add_screen("Scan", ScanScreen(self._screen_host, self))
         self._add_screen("Library", LibraryScreen(self._screen_host, self))
         self._add_screen("Emulate", EmulateScreen(self._screen_host, self))
@@ -62,11 +80,15 @@ class App(tk.Tk):
         self._add_screen("Proxmark", ProxmarkScreen(self._screen_host, self))
         self._add_screen("System", SystemScreen(self._screen_host, self))
 
-        self.show_section("Scan")
+        self.show_section("Home")
 
     def _build_left_nav(self) -> None:
-        ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 12))
-        for label in ["Scan", "IR", "Bluetooth", "WiFi", "Proxmark", "System"]:
+        for child in self._nav.winfo_children():
+            child.destroy()
+        ttk.Label(self._nav, text="PIP-UI", style="NavTitle.TLabel").pack(pady=(16, 6))
+        for label in ["Home", "Scan", "IR", "Bluetooth", "WiFi", "Proxmark", "System"]:
+            if label != "System" and not self.feature_enabled(label):
+                continue
             button = ttk.Button(
                 self._nav,
                 text=label,
@@ -75,119 +97,269 @@ class App(tk.Tk):
             )
             button.pack(fill=tk.X, padx=12, pady=6)
 
+
+
+    def _default_section(self) -> str:
+        for label in ["Home", "Scan", "IR", "Bluetooth", "WiFi", "Proxmark", "System"]:
+            if label == "System" or self.feature_enabled(label):
+                return label
+        return "System"
+
+    def feature_enabled(self, name: str) -> bool:
+        return self._feature_flags.get(name, True)
+
+    def set_feature_flags(self, flags: dict[str, bool]) -> None:
+        self._feature_flags.update(flags)
+        self._save_feature_flags()
+        self._build_left_nav()
+        self.show_section(self._default_section())
+        self.refresh_home()
+
+    def _load_feature_flags(self) -> dict[str, bool]:
+        settings_path = Path(__file__).resolve().parents[2] / "data" / "system_settings.json"
+        if not settings_path.exists():
+            return {
+                "Scan": True,
+                "IR": True,
+                "Bluetooth": True,
+                "WiFi": True,
+                "Proxmark": True,
+            }
+        try:
+            payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        return {
+            "Scan": bool(payload.get("Scan", True)),
+            "IR": bool(payload.get("IR", True)),
+            "Bluetooth": bool(payload.get("Bluetooth", True)),
+            "WiFi": bool(payload.get("WiFi", True)),
+            "Proxmark": bool(payload.get("Proxmark", True)),
+        }
+
+    def _load_log_setting(self) -> bool:
+        settings_path = Path(__file__).resolve().parents[2] / "data" / "system_settings.json"
+        if not settings_path.exists():
+            return False
+        try:
+            payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        return bool(payload.get("log_enabled", False))
+
+    def _save_feature_flags(self) -> None:
+        settings_path = Path(__file__).resolve().parents[2] / "data" / "system_settings.json"
+        payload = {name: bool(value) for name, value in self._feature_flags.items()}
+        payload["log_enabled"] = bool(self._log_enabled.get())
+        settings_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _build_ir_indicators(self) -> None:
+        indicator = ttk.Frame(self._nav, style="Nav.TFrame")
+        indicator.pack(fill=tk.X, padx=12, pady=(6, 12))
+        ttk.Label(indicator, text="IR Status", style="Muted.TLabel").pack(anchor="w")
+        row = ttk.Frame(indicator, style="Nav.TFrame")
+        row.pack(fill=tk.X, pady=(4, 0))
+        self._ir_rx_canvas = tk.Canvas(
+            row, width=12, height=12, highlightthickness=0, bg=self._colors["panel_alt"]
+        )
+        self._ir_rx_canvas.pack(side=tk.LEFT, padx=(0, 6))
+        self._ir_tx_canvas = tk.Canvas(
+            row, width=12, height=12, highlightthickness=0, bg=self._colors["panel_alt"]
+        )
+        self._ir_tx_canvas.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Label(row, text="RX", style="Muted.TLabel").pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Label(row, text="TX", style="Muted.TLabel").pack(side=tk.LEFT)
+        self._refresh_ir_detection()
+
+    def _refresh_ir_detection(self) -> None:
+        self._ir_detected["rx"] = bool(self._ir_rx_pin.get().strip())
+        self._ir_detected["tx"] = bool(self._ir_tx_pin.get().strip())
+        self._update_ir_indicators()
+
+    def _update_ir_indicators(self) -> None:
+        if not hasattr(self, "_ir_rx_canvas"):
+            return
+        rx_color = self._colors["accent"] if self._ir_detected["rx"] else self._colors["muted"]
+        tx_color = self._colors["accent"] if self._ir_detected["tx"] else self._colors["muted"]
+        self._ir_rx_canvas.delete("all")
+        self._ir_tx_canvas.delete("all")
+        self._ir_rx_canvas.create_oval(2, 2, 10, 10, fill=rx_color, outline=rx_color)
+        self._ir_tx_canvas.create_oval(2, 2, 10, 10, fill=tx_color, outline=tx_color)
+
+    def _load_main_gif(self) -> None:
+        gif_path = Path(__file__).resolve().parents[2] / "data" / "assets" / "main.gif"
+        if not gif_path.exists():
+            return
+        frames: list[tk.PhotoImage] = []
+        index = 0
+        while True:
+            try:
+                frame = tk.PhotoImage(file=str(gif_path), format=f"gif -index {index}")
+            except tk.TclError:
+                break
+            frames.append(frame)
+            index += 1
+        if frames:
+            width = frames[0].width()
+            height = frames[0].height()
+            target_w, target_h = self._gif_target_size
+            scale = max(1, math.ceil(width / target_w), math.ceil(height / target_h))
+            if scale > 1:
+                frames = [frame.subsample(scale, scale) for frame in frames]
+            self._gif_frames = frames
+
+    def _start_gif_animation(self, update_image: Callable[[tk.PhotoImage], None]) -> None:
+        if self._gif_animation_id:
+            self.after_cancel(self._gif_animation_id)
+        self._gif_update_image = update_image
+        self._gif_frame_index = 0
+        self._animate_gif()
+
+    def _animate_gif(self) -> None:
+        if not self._gif_update_image or not self._gif_frames:
+            return
+        self._gif_frame_index = (self._gif_frame_index + 1) % len(self._gif_frames)
+        self._gif_update_image(self._gif_frames[self._gif_frame_index])
+        self._gif_animation_id = self.after(120, self._animate_gif)
+
+    def system_check_summary(self) -> str:
+        enabled = [name for name, value in self._feature_flags.items() if value]
+        disabled = [name for name, value in self._feature_flags.items() if not value]
+        rx_status = "Detected" if self._ir_detected["rx"] else "Not detected"
+        tx_status = "Detected" if self._ir_detected["tx"] else "Not detected"
+        lines = [
+            "System Check",
+            f"Enabled: {', '.join(enabled) if enabled else 'None'}",
+        ]
+        if disabled:
+            lines.append(f"Disabled: {', '.join(disabled)}")
+        lines.append(f"IR RX: {rx_status}")
+        lines.append(f"IR TX: {tx_status}")
+        return "\n".join(lines)
+
+    def refresh_home(self) -> None:
+        screen = self._screens.get("Home")
+        if screen and hasattr(screen, "refresh"):
+            screen.refresh()
+
+    def toggle_debug_window(self) -> None:
+        if self._debug_enabled.get():
+            self._open_debug_window()
+        else:
+            self._close_debug_window()
+
+    def set_log_enabled(self, enabled: bool) -> None:
+        self._log_enabled.set(enabled)
+        self._save_feature_flags()
+        if enabled:
+            self._emit_placeholder_logs()
+
+    def _open_debug_window(self) -> None:
+        if self._debug_window and self._debug_window.winfo_exists():
+            self._debug_window.lift()
+            return
+        window = tk.Toplevel(self)
+        window.title("Debug Console")
+        window.geometry("420x220")
+        window.configure(bg=self._colors["bg"])
+        window.resizable(True, True)
+        self._debug_window = window
+
+        text = tk.Text(
+            window,
+            height=8,
+            bg=self._colors["panel_alt"],
+            fg=self._colors["text"],
+            insertbackground=self._colors["accent"],
+            wrap=tk.WORD,
+        )
+        text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        text.configure(state=tk.DISABLED)
+        self._debug_text = text
+
+        def on_close() -> None:
+            self._debug_enabled.set(False)
+            self._close_debug_window()
+
+        window.protocol("WM_DELETE_WINDOW", on_close)
+
+    def _close_debug_window(self) -> None:
+        if self._debug_window and self._debug_window.winfo_exists():
+            self._debug_window.destroy()
+        self._debug_window = None
+        self._debug_text = None
+
+    def log_debug(self, message: str) -> None:
+        if not self._debug_enabled.get():
+            return
+        if not self._debug_text or not self._debug_text.winfo_exists():
+            return
+        stamped = f"{self._timestamp()} {message}"
+        self._debug_text.configure(state=tk.NORMAL)
+        self._debug_text.insert(tk.END, stamped + "\n")
+        self._debug_text.see(tk.END)
+        self._debug_text.configure(state=tk.DISABLED)
+        if self._log_enabled.get():
+            self._log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = self._log_dir / "debug.log"
+            self._append_log_line(log_path, stamped)
+
+    def log_feature(self, feature: str, message: str) -> None:
+        line = f"[{feature}] {message}"
+        self.log_debug(line)
+        if self._log_enabled.get():
+            self._log_dir.mkdir(parents=True, exist_ok=True)
+            safe = re.sub(r"[^A-Za-z0-9_-]+", "_", feature.strip()).lower() or "system"
+            log_path = self._log_dir / f"{safe}.log"
+            stamped = f"{self._timestamp()} {line}"
+            self._append_log_line(log_path, stamped)
+
+    def _emit_placeholder_logs(self) -> None:
+        self.log_feature("IR", "Receiver ready on GPIO RX.")
+        self.log_feature("IR", "Transmitter ready on GPIO TX.")
+        self.log_feature("Bluetooth", "Adapter detected, scan idle.")
+        self.log_feature("WiFi", "Interface up, no active connection.")
+
+    def _timestamp(self) -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _append_log_line(self, path: Path, line: str) -> None:
+        self._rotate_log_if_needed(path)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+
+    def _rotate_log_if_needed(self, path: Path) -> None:
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return
+        if size < self._log_max_bytes:
+            return
+        backup = path.with_suffix(path.suffix + ".1")
+        if backup.exists():
+            backup.unlink()
+        path.replace(backup)
+
     def _configure_theme(self) -> None:
         self._colors = {
-            "bg": "#0b120b",
-            "panel": "#0f1b0f",
-            "panel_alt": "#0b150b",
-            "accent": "#69ff5a",
-            "accent_alt": "#2fd05a",
-            "text": "#d7ffd7",
-            "muted": "#57b857",
+            "bg": "#000000",
+            "panel": "#18222d",
+            "panel_alt": "#141c26",
+            "accent": "#36d1cc",
+            "accent_alt": "#1aa6a0",
+            "text": "#e6f0f6",
+            "muted": "#8aa4b5",
         }
         style = ttk.Style(self)
-        style.theme_use("clam")
+        try:
+            import sv_ttk  # type: ignore
 
-        style.configure("App.TFrame", background=self._colors["bg"])
-        style.configure("Nav.TFrame", background=self._colors["panel_alt"])
-        style.configure("Card.TFrame", background=self._colors["panel"])
+            sv_ttk.set_theme("dark")
+            self._colors["bg"] = "#1c1c1c"
+        except Exception:
+            style.theme_use("clam")
 
-        style.configure(
-            "NavTitle.TLabel",
-            background=self._colors["panel_alt"],
-            foreground=self._colors["accent"],
-            font=("Courier", 16, "bold"),
-        )
-        style.configure(
-            "Title.TLabel",
-            background=self._colors["bg"],
-            foreground=self._colors["accent"],
-            font=("Courier", 20, "bold"),
-        )
-        style.configure(
-            "Status.TLabel",
-            background=self._colors["bg"],
-            foreground=self._colors["text"],
-            font=("Courier", 16, "bold"),
-        )
-        style.configure(
-            "Body.TLabel",
-            background=self._colors["bg"],
-            foreground=self._colors["text"],
-            font=("Courier", 12),
-        )
-        style.configure(
-            "Muted.TLabel",
-            background=self._colors["bg"],
-            foreground=self._colors["muted"],
-            font=("Courier", 10),
-        )
-
-        style.configure(
-            "Primary.TButton",
-            background=self._colors["accent"],
-            foreground="#0b120b",
-            font=("Courier", 12, "bold"),
-            padding=10,
-        )
-        style.map(
-            "Primary.TButton",
-            background=[("active", self._colors["accent_alt"])],
-            foreground=[("active", "#0b120b")],
-        )
-
-        style.configure(
-            "Secondary.TButton",
-            background=self._colors["panel"],
-            foreground=self._colors["text"],
-            font=("Courier", 12, "bold"),
-            padding=10,
-        )
-        style.map(
-            "Secondary.TButton",
-            background=[("active", self._colors["panel_alt"])],
-            foreground=[("active", self._colors["accent"])],
-        )
-
-        style.configure(
-            "Nav.TButton",
-            background=self._colors["panel_alt"],
-            foreground=self._colors["text"],
-            font=("Courier", 12, "bold"),
-            padding=10,
-        )
-        style.map(
-            "Nav.TButton",
-            background=[("active", self._colors["panel"])],
-            foreground=[("active", self._colors["accent"])],
-        )
-
-        style.configure(
-            "Small.TButton",
-            background=self._colors["panel"],
-            foreground=self._colors["text"],
-            font=("Courier", 10, "bold"),
-            padding=6,
-        )
-        style.map(
-            "Small.TButton",
-            background=[("active", self._colors["panel_alt"])],
-            foreground=[("active", self._colors["accent"])],
-        )
-
-        style.configure(
-            "App.TEntry",
-            fieldbackground=self._colors["panel"],
-            background=self._colors["panel"],
-            foreground=self._colors["text"],
-            insertcolor=self._colors["accent"],
-        )
-        style.configure(
-            "App.TMenubutton",
-            background=self._colors["panel"],
-            foreground=self._colors["text"],
-            font=("Courier", 11, "bold"),
-        )
+        # Use Sun-Valley defaults without custom style overrides.
 
     def _add_screen(self, name: str, frame: tk.Frame) -> None:
         self._screens[name] = frame
@@ -201,48 +373,54 @@ class App(tk.Tk):
             self._current_screen.refresh()
 
     def show_section(self, name: str) -> None:
+        if name != "System" and not self.feature_enabled(name):
+            return
+        if name in {"Home", "System"}:
+            self._subnav.grid_remove()
+        else:
+            self._subnav.grid()
         for child in self._subnav.winfo_children():
             child.destroy()
+        def build_tabs(labels: list[str], on_select: Callable[[str], None], default: str) -> None:
+            notebook = ttk.Notebook(self._subnav)
+            notebook.pack(fill=tk.X, padx=6, pady=6)
+            tab_frames: dict[str, ttk.Frame] = {}
+            for label in labels:
+                tab = ttk.Frame(notebook)
+                notebook.add(tab, text=label)
+                tab_frames[str(tab)] = label
+
+            def handle_tab_change(event: tk.Event) -> None:
+                selected = event.widget.select()
+                label = tab_frames.get(selected)
+                if label:
+                    on_select(label)
+
+            notebook.bind("<<NotebookTabChanged>>", handle_tab_change)
+            if default in labels:
+                notebook.select(labels.index(default))
+                on_select(default)
+        if name == "Home":
+            self.show_screen("Home")
+            return
         if name == "Scan":
-            for label in ["Scan", "Library", "Emulate", "Clone/Write", "Settings"]:
-                ttk.Button(
-                    self._subnav,
-                    text=label,
-                    style="Nav.TButton",
-                    command=lambda screen_name=label: self.show_screen(screen_name),
-                ).pack(side=tk.LEFT, padx=6, pady=6)
-            self.show_screen("Scan")
+            labels = ["Scan", "Library", "Emulate", "Clone/Write", "Settings"]
+            build_tabs(labels, self.show_screen, "Scan")
         elif name == "IR":
             ir_screen = self._screens["IR"]
-            for label in [
+            labels = [
                 "Universal Remotes",
                 "Learn New Remote",
                 "Saved Remotes",
                 "Settings",
-            ]:
-                ttk.Button(
-                    self._subnav,
-                    text=label,
-                    style="Small.TButton",
-                    command=lambda screen_name=label: ir_screen.show_subscreen(
-                        screen_name
-                    ),
-                ).pack(side=tk.LEFT, padx=4, pady=4)
+            ]
             self.show_screen("IR")
-            ir_screen.show_subscreen("Universal Remotes")
+            build_tabs(labels, ir_screen.show_subscreen, "Universal Remotes")
         elif name == "Bluetooth":
             bluetooth_screen = self._screens["Bluetooth"]
-            for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
-                ttk.Button(
-                    self._subnav,
-                    text=label,
-                    style="Nav.TButton",
-                    command=lambda screen_name=label: bluetooth_screen.show_subscreen(
-                        screen_name
-                    ),
-                ).pack(side=tk.LEFT, padx=6, pady=6)
             self.show_screen("Bluetooth")
-            bluetooth_screen.show_subscreen("Discovery")
+            labels = ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]
+            build_tabs(labels, bluetooth_screen.show_subscreen, "Discovery")
         else:
             self.show_screen(name)
 
@@ -296,12 +474,130 @@ class App(tk.Tk):
     def set_ir_pins(self, tx_pin: str, rx_pin: str) -> None:
         self._ir_tx_pin.set(tx_pin)
         self._ir_rx_pin.set(rx_pin)
+        self._refresh_ir_detection()
+        self.refresh_home()
 
 
 class BaseScreen(ttk.Frame):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, style="App.TFrame")
         self._app = app
+
+
+class HomeScreen(BaseScreen):
+    def __init__(self, master: tk.Misc, app: App) -> None:
+        super().__init__(master, app)
+        self._status_rows: list[tuple[str, tk.Canvas]] = []
+        self._ir_rx_canvas: Optional[tk.Canvas] = None
+        self._ir_tx_canvas: Optional[tk.Canvas] = None
+
+        self._content = ttk.Frame(self, style="App.TFrame")
+        self._content.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
+
+        top_row = ttk.Frame(self._content, style="App.TFrame")
+        top_row.pack(pady=(6, 8))
+
+        if self._app._gif_frames:
+            gif_w, gif_h = self._app._gif_target_size
+            theme_bg = ttk.Style().lookup("TFrame", "background") or self._app._colors["bg"]
+            gif_canvas = tk.Canvas(
+                top_row,
+                width=gif_w,
+                height=gif_h,
+                highlightthickness=0,
+                bg=theme_bg,
+            )
+            gif_canvas.pack(expand=True)
+            image_id = gif_canvas.create_image(
+                gif_w // 2,
+                gif_h // 2,
+                image=self._app._gif_frames[0],
+                anchor="center",
+            )
+            self._app._start_gif_animation(
+                lambda img, canvas=gif_canvas, item=image_id: canvas.itemconfigure(
+                    item, image=img
+                )
+            )
+        else:
+            ttk.Label(
+                top_row,
+                text="GIF missing: data/assets/main.gif",
+                style="Muted.TLabel",
+            ).pack(expand=True)
+
+        status_card = ttk.Frame(self._content, style="Card.TFrame")
+        status_card.pack(fill=tk.X, padx=80, pady=(0, 6))
+        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(pady=(8, 4))
+        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
+        self._status_host.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        self._build_status_rows()
+
+    def refresh(self) -> None:
+        self._build_status_rows()
+
+    def _build_status_rows(self) -> None:
+        for child in self._status_host.winfo_children():
+            child.destroy()
+        self._status_rows.clear()
+        self._ir_rx_canvas = None
+        self._ir_tx_canvas = None
+
+        enabled_modules = [name for name, enabled in self._app._feature_flags.items() if enabled]
+        if not enabled_modules:
+            ttk.Label(
+                self._status_host,
+                text="No modules enabled.",
+                style="Muted.TLabel",
+            ).pack(anchor="w")
+            return
+
+        for name in enabled_modules:
+            row = ttk.Frame(self._status_host, style="Card.TFrame")
+            row.pack(fill=tk.X, pady=4)
+            if name == "IR":
+                ttk.Label(row, text="IR RX", style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
+                self._ir_rx_canvas = self._make_status_light(row)
+                ttk.Label(row, text="IR TX", style="Body.TLabel").pack(
+                    side=tk.LEFT, padx=(12, 8)
+                )
+                self._ir_tx_canvas = self._make_status_light(row)
+            else:
+                ttk.Label(row, text=name, style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
+                light = self._make_status_light(row)
+                self._status_rows.append((name, light))
+
+        self._update_status_lights()
+
+    def _make_status_light(self, parent: ttk.Frame) -> tk.Canvas:
+        canvas = tk.Canvas(
+            parent,
+            width=12,
+            height=12,
+            highlightthickness=0,
+            bg=self._app._colors["panel"],
+        )
+        canvas.pack(side=tk.LEFT)
+        return canvas
+
+    def _update_status_lights(self) -> None:
+        ok_color = self._app._colors["accent"]
+        off_color = self._app._colors["muted"]
+
+        for name, canvas in self._status_rows:
+            detected = True
+            canvas.delete("all")
+            color = ok_color if detected else off_color
+            canvas.create_oval(2, 2, 10, 10, fill=color, outline=color)
+
+        if self._ir_rx_canvas:
+            self._ir_rx_canvas.delete("all")
+            rx_color = ok_color if self._app._ir_detected["rx"] else off_color
+            self._ir_rx_canvas.create_oval(2, 2, 10, 10, fill=rx_color, outline=rx_color)
+        if self._ir_tx_canvas:
+            self._ir_tx_canvas.delete("all")
+            tx_color = ok_color if self._app._ir_detected["tx"] else off_color
+            self._ir_tx_canvas.create_oval(2, 2, 10, 10, fill=tx_color, outline=tx_color)
 
 
 class ScanScreen(BaseScreen):
@@ -546,32 +842,7 @@ class SettingsScreen(BaseScreen):
             conn_frame, self._conn_mode, "I2C", "I2C", "SPI", "UART", style="App.TMenubutton"
         ).pack(side=tk.LEFT)
 
-        ir_frame = ttk.Frame(self, style="Card.TFrame")
-        ir_frame.pack(pady=8, padx=16, fill=tk.X)
-        ttk.Label(ir_frame, text="IR GPIO Pins", style="Status.TLabel").pack(pady=(8, 4))
-        pin_row = ttk.Frame(ir_frame, style="Card.TFrame")
-        pin_row.pack(fill=tk.X, padx=8, pady=6)
-        ttk.Label(pin_row, text="TX:", style="Body.TLabel").grid(row=0, column=0, padx=4)
-        self._ir_tx_entry = ttk.Entry(pin_row, style="App.TEntry")
-        self._ir_tx_entry.insert(0, self._app.ir_tx_pin())
-        self._ir_tx_entry.grid(row=0, column=1, padx=4, sticky="ew")
-        ttk.Label(pin_row, text="RX:", style="Body.TLabel").grid(row=0, column=2, padx=4)
-        self._ir_rx_entry = ttk.Entry(pin_row, style="App.TEntry")
-        self._ir_rx_entry.insert(0, self._app.ir_rx_pin())
-        self._ir_rx_entry.grid(row=0, column=3, padx=4, sticky="ew")
-        pin_row.columnconfigure(1, weight=1)
-        pin_row.columnconfigure(3, weight=1)
-        ttk.Button(
-            ir_frame,
-            text="Save IR Pins",
-            style="Secondary.TButton",
-            command=self._save_ir_pins,
-        ).pack(pady=(0, 8))
-
-    def _save_ir_pins(self) -> None:
-        tx_pin = self._ir_tx_entry.get().strip() or self._app.ir_tx_pin()
-        rx_pin = self._ir_rx_entry.get().strip() or self._app.ir_rx_pin()
-        self._app.set_ir_pins(tx_pin, rx_pin)
+        # IR pins moved to System screen.
 
 
 
@@ -588,7 +859,7 @@ class IRScreen(BaseScreen):
 
         self._status = tk.StringVar(value="")
         self._captures: list[dict[str, str]] = []
-        self._capture_detail = tk.StringVar(value="No captures yet.")
+        self._capture_detail = tk.StringVar(value="")
         self._last_capture: Optional[dict[str, str]] = None
         self._capture_thread: Optional[threading.Thread] = None
         self._capture_stop = threading.Event()
@@ -608,11 +879,15 @@ class IRScreen(BaseScreen):
 
         self._universal_device = tk.StringVar(value="TV")
         self._universal_selected_button = tk.StringVar(value="Select a button")
-        self._universal_progress = tk.StringVar(value="Progress: -")
-        self._universal_model = tk.StringVar(value="Model: -")
+        self._universal_progress_value = tk.DoubleVar(value=0.0)
+        self._universal_model = tk.StringVar(value="-")
+        self._universal_notice = tk.StringVar(value="")
         self._universal_delay = self._load_universal_delay()
+        self._delay_value = tk.DoubleVar(value=self._universal_delay)
         self._universal_scan_thread: Optional[threading.Thread] = None
         self._universal_scan_stop = threading.Event()
+        self._universal_buttons: dict[str, ttk.Button] = {}
+        self._selected_universal_button: Optional[str] = None
         self._learn_instruction = tk.StringVar(
             value="Point the remote at the IR port and push the button."
         )
@@ -733,17 +1008,15 @@ class IRScreen(BaseScreen):
 
         info = ttk.Frame(right, style="Card.TFrame")
         info.pack(fill=tk.X, pady=6)
-        ttk.Label(info, text="Selected Button", style="Status.TLabel").pack(pady=(6, 2))
-        ttk.Label(
-            info,
-            textvariable=self._universal_selected_button,
-            style="Body.TLabel",
-            wraplength=420,
-        ).pack(pady=2)
         ttk.Label(info, textvariable=self._universal_model, style="Muted.TLabel").pack(pady=2)
-        ttk.Label(info, textvariable=self._universal_progress, style="Muted.TLabel").pack(
-            pady=(0, 8)
+        ttk.Label(info, textvariable=self._universal_notice, style="Muted.TLabel").pack(pady=2)
+        self._universal_progress_bar = ttk.Progressbar(
+            info,
+            variable=self._universal_progress_value,
+            maximum=1.0,
+            mode="determinate",
         )
+        self._universal_progress_bar.pack(fill=tk.X, padx=12, pady=(4, 8))
 
         controls = ttk.Frame(right, style="Card.TFrame")
         controls.pack(fill=tk.X, pady=6)
@@ -774,37 +1047,17 @@ class IRScreen(BaseScreen):
 
         control_card = ttk.Frame(frame, style="Card.TFrame")
         control_card.pack(fill=tk.X, pady=6)
-        ttk.Label(control_card, text="Learn New Remote", style="Status.TLabel").pack(
-            pady=(8, 4)
-        )
+        # Title removed to avoid duplicate "Learn New Remote" text.
         ttk.Label(
             control_card,
             textvariable=self._learn_instruction,
             style="Body.TLabel",
             wraplength=420,
         ).pack(pady=(0, 6))
-        button_row = ttk.Frame(control_card, style="Card.TFrame")
-        button_row.pack(fill=tk.X, padx=8, pady=8)
-        self._learn_retry_btn = ttk.Button(
-            button_row, text="Retry", style="Small.TButton", command=self._retry_learn
-        )
-        self._learn_retry_btn.grid(row=0, column=0, padx=4, sticky="ew")
-        self._learn_send_btn = ttk.Button(
-            button_row, text="Send", style="Small.TButton", command=self._send_learned_signal
-        )
-        self._learn_send_btn.grid(row=0, column=1, padx=4, sticky="ew")
-        self._learn_save_btn = ttk.Button(
-            button_row, text="Save", style="Small.TButton", command=self._save_learned_signal
-        )
-        self._learn_save_btn.grid(row=0, column=2, padx=4, sticky="ew")
-        for idx in range(3):
-            button_row.columnconfigure(idx, weight=1)
 
         captures = ttk.Frame(frame, style="Card.TFrame")
         captures.pack(fill=tk.BOTH, expand=True, pady=6)
-        ttk.Label(captures, text="Captured Signals", style="Status.TLabel").pack(
-            pady=(8, 4)
-        )
+        # Captured Signals header removed to keep layout concise.
         self._learn_capture_list = tk.Listbox(
             captures,
             height=8,
@@ -820,6 +1073,23 @@ class IRScreen(BaseScreen):
         ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
             pady=(0, 8)
         )
+
+        self._learn_button_row = ttk.Frame(frame, style="Card.TFrame")
+        self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._learn_retry_btn = ttk.Button(
+            self._learn_button_row, text="Retry", style="Small.TButton", command=self._retry_learn
+        )
+        self._learn_retry_btn.grid(row=0, column=0, padx=4, sticky="ew")
+        self._learn_send_btn = ttk.Button(
+            self._learn_button_row, text="Send", style="Small.TButton", command=self._send_learned_signal
+        )
+        self._learn_send_btn.grid(row=0, column=1, padx=4, sticky="ew")
+        self._learn_save_btn = ttk.Button(
+            self._learn_button_row, text="Save", style="Small.TButton", command=self._save_learned_signal
+        )
+        self._learn_save_btn.grid(row=0, column=2, padx=4, sticky="ew")
+        for idx in range(3):
+            self._learn_button_row.columnconfigure(idx, weight=1)
         return frame
 
     def _build_saved_remotes_screen(self) -> tk.Frame:
@@ -884,9 +1154,18 @@ class IRScreen(BaseScreen):
         ttk.Label(
             delay_card, text="Universal Remote Delay (s)", style="Status.TLabel"
         ).pack(pady=(8, 4))
-        self._delay_entry = ttk.Entry(delay_card, style="App.TEntry")
-        self._delay_entry.insert(0, f"{self._universal_delay:.2f}")
-        self._delay_entry.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._delay_label = tk.StringVar(value=f"{self._universal_delay:.1f} s")
+        ttk.Label(delay_card, textvariable=self._delay_label, style="Body.TLabel").pack(
+            pady=(0, 4)
+        )
+        self._delay_slider = ttk.Scale(
+            delay_card,
+            from_=0.0,
+            to=4.0,
+            variable=self._delay_value,
+            command=self._update_delay_label,
+        )
+        self._delay_slider.pack(fill=tk.X, padx=8, pady=(0, 6))
         ttk.Button(
             delay_card,
             text="Save Delay",
@@ -904,7 +1183,7 @@ class IRScreen(BaseScreen):
         ).pack(pady=(0, 6))
         ttk.Button(
             pin_status,
-            text="Edit Pins in Settings",
+            text="Edit Pins in System",
             style="Secondary.TButton",
             command=self._open_ir_pin_settings,
         ).pack(pady=(0, 8))
@@ -915,16 +1194,12 @@ class IRScreen(BaseScreen):
     def _begin_learn_session(self) -> None:
         self._captures.clear()
         self._last_capture = None
-        self._capture_detail.set("No captures yet.")
+        self._capture_detail.set("")
         self._learn_instruction.set(
             "Point the remote at the IR port and push the button."
         )
-        if hasattr(self, "_learn_retry_btn"):
-            self._learn_retry_btn.state(["disabled"])
-        if hasattr(self, "_learn_send_btn"):
-            self._learn_send_btn.state(["disabled"])
-        if hasattr(self, "_learn_save_btn"):
-            self._learn_save_btn.state(["disabled"])
+        if hasattr(self, "_learn_button_row"):
+            self._learn_button_row.pack_forget()
         if hasattr(self, "_learn_capture_list"):
             self._learn_capture_list.delete(0, tk.END)
         self._start_capture()
@@ -960,12 +1235,8 @@ class IRScreen(BaseScreen):
         self._captures.append(capture)
         self._last_capture = capture
         self._learn_instruction.set("Signal captured. Review details below.")
-        if hasattr(self, "_learn_retry_btn"):
-            self._learn_retry_btn.state(["!disabled"])
-        if hasattr(self, "_learn_send_btn"):
-            self._learn_send_btn.state(["!disabled"])
-        if hasattr(self, "_learn_save_btn"):
-            self._learn_save_btn.state(["!disabled"])
+        if hasattr(self, "_learn_button_row"):
+            self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
         if hasattr(self, "_learn_capture_list"):
             self._learn_capture_list.insert(
                 tk.END, f"{name} | {capture['protocol']} | {command}"
@@ -1228,23 +1499,29 @@ class IRScreen(BaseScreen):
         self._universal_device.set(device)
         self._render_universal_buttons(device)
         self._universal_selected_button.set("Select a button")
-        self._universal_model.set("Model: -")
-        self._universal_progress.set("Progress: -")
+        self._selected_universal_button = None
+        self._universal_model.set("-")
+        self._universal_notice.set("")
+        self._universal_progress_value.set(0.0)
+        self._universal_progress_bar.configure(maximum=1.0)
 
     def _render_universal_buttons(self, device: str) -> None:
         for child in self._universal_button_grid.winfo_children():
             child.destroy()
+        self._universal_buttons.clear()
         buttons = self._universal_layouts.get(device, [])
         columns = 3
         for idx, label in enumerate(buttons):
             row = idx // columns
             col = idx % columns
-            ttk.Button(
+            button = ttk.Button(
                 self._universal_button_grid,
                 text=label,
                 style="Small.TButton",
                 command=lambda name=label: self._select_universal_button(name),
-            ).grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+            )
+            button.grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+            self._universal_buttons[label] = button
         for col in range(columns):
             self._universal_button_grid.columnconfigure(col, weight=1)
 
@@ -1252,15 +1529,27 @@ class IRScreen(BaseScreen):
         if self._universal_scan_thread and self._universal_scan_thread.is_alive():
             return
         self._universal_selected_button.set(label)
-        self._universal_model.set("Model: -")
-        self._universal_progress.set("Progress: -")
+        self._universal_notice.set("")
+        self._highlight_universal_button(label)
+        self._universal_model.set("-")
+        self._universal_progress_value.set(0.0)
+        self._universal_progress_bar.configure(maximum=1.0)
+
+    def _highlight_universal_button(self, label: str) -> None:
+        if self._selected_universal_button and self._selected_universal_button in self._universal_buttons:
+            self._universal_buttons[self._selected_universal_button].configure(
+                style="Small.TButton"
+            )
+        self._selected_universal_button = label
+        if label in self._universal_buttons:
+            self._universal_buttons[label].configure(style="Accent.TButton")
 
     def _start_universal_scan(self) -> None:
         if self._universal_scan_thread and self._universal_scan_thread.is_alive():
             return
         button_label = self._universal_selected_button.get()
         if not button_label or button_label == "Select a button":
-            messagebox.showinfo("Universal Remotes", "Select a button first.")
+            self._universal_notice.set("Select a button to start.")
             return
         device = self._universal_device.get()
         signals = self._load_universal_signals(device)
@@ -1302,15 +1591,19 @@ class IRScreen(BaseScreen):
         self._app.after(0, self._finish_universal_scan)
 
     def _finish_universal_scan(self) -> None:
-        self._universal_progress.set("Progress: Stopped")
+        self._universal_progress_value.set(0.0)
+        self._universal_progress_bar.configure(maximum=1.0)
         self._set_universal_controls_enabled(True)
 
     def _set_universal_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
         self._universal_device_list.configure(state=state)
-        for child in self._universal_button_grid.winfo_children():
+        for label, button in self._universal_buttons.items():
+            target_state = state
+            if not enabled and label == self._selected_universal_button:
+                target_state = "normal"
             try:
-                child.configure(state=state)
+                button.configure(state=target_state)
             except tk.TclError:
                 continue
 
@@ -1319,8 +1612,9 @@ class IRScreen(BaseScreen):
     ) -> None:
         self._universal_selected_button.set(label)
         model = signal.model or "Unknown"
-        self._universal_model.set(f"Model: {model}")
-        self._universal_progress.set(f"Progress: {count}/{total}")
+        self._universal_model.set(model)
+        self._universal_progress_bar.configure(maximum=total)
+        self._universal_progress_value.set(float(count))
 
     def _send_universal_signal(self, signal: "FlipperIRSignal") -> None:
         self._set_status(f"Sending {signal.name} (stub).")
@@ -1369,17 +1663,17 @@ class IRScreen(BaseScreen):
         return []
 
     def _save_universal_delay(self) -> None:
-        raw = self._delay_entry.get().strip()
-        try:
-            value = float(raw)
-        except ValueError:
-            messagebox.showinfo("Settings", "Enter a valid number.")
-            return
-        value = max(0.1, min(5.0, value))
+        value = float(self._delay_value.get())
+        value = max(0.0, min(4.0, value))
+        value = round(value, 1)
         self._universal_delay = value
         self._store_universal_delay(value)
-        self._delay_entry.delete(0, tk.END)
-        self._delay_entry.insert(0, f"{value:.2f}")
+        self._delay_value.set(value)
+        self._delay_label.set(f"{value:.1f} s")
+
+    def _update_delay_label(self, _value: str) -> None:
+        value = round(float(self._delay_value.get()), 1)
+        self._delay_label.set(f"{value:.1f} s")
 
     def _load_universal_delay(self) -> float:
         if not self._ir_settings_path.exists():
@@ -1397,8 +1691,10 @@ class IRScreen(BaseScreen):
         )
 
     def _open_ir_pin_settings(self) -> None:
-        self._app.show_section("Scan")
-        self._app.show_screen("Settings")
+        self._app.show_section("System")
+        system_screen = self._app._screens.get("System")
+        if system_screen and hasattr(system_screen, "show_pins_tab"):
+            system_screen.show_pins_tab()
 
 
 class WiFiScreen(BaseScreen):
@@ -1720,12 +2016,93 @@ class BluetoothScreen(BaseScreen):
 class SystemScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
-        ttk.Label(self, text="System", style="Title.TLabel").pack(pady=10)
-        ttk.Label(
-            self,
-            text="System actions will appear here.",
-            style="Body.TLabel",
-        ).pack(pady=6)
+        self._tabs = ttk.Notebook(self)
+        self._tabs.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+
+        features_tab = ttk.Frame(self._tabs)
+        pins_tab = ttk.Frame(self._tabs)
+        self._tabs.add(features_tab, text="Features")
+        self._tabs.add(pins_tab, text="Pins")
+
+        feature_card = ttk.Frame(features_tab, style="Card.TFrame")
+        feature_card.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+        ttk.Label(feature_card, text="Main Menu Features", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        self._feature_vars = {
+            "Scan": tk.BooleanVar(value=self._app.feature_enabled("Scan")),
+            "IR": tk.BooleanVar(value=self._app.feature_enabled("IR")),
+            "Bluetooth": tk.BooleanVar(value=self._app.feature_enabled("Bluetooth")),
+            "WiFi": tk.BooleanVar(value=self._app.feature_enabled("WiFi")),
+            "Proxmark": tk.BooleanVar(value=self._app.feature_enabled("Proxmark")),
+        }
+        feature_row = ttk.Frame(feature_card, style="Card.TFrame")
+        feature_row.pack(fill=tk.X, padx=8, pady=6)
+        for index, (label, var) in enumerate(self._feature_vars.items()):
+            ttk.Checkbutton(
+                feature_row,
+                text=label,
+                variable=var,
+                style="Switch.TCheckbutton",
+            ).grid(row=index // 2, column=index % 2, sticky="w", padx=4, pady=4)
+        ttk.Label(feature_card, text="Dev", style="Status.TLabel").pack(pady=(4, 4))
+        debug_row = ttk.Frame(feature_card, style="Card.TFrame")
+        debug_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Checkbutton(
+            debug_row,
+            text="Debug Window",
+            variable=self._app._debug_enabled,
+            style="Switch.TCheckbutton",
+            command=self._app.toggle_debug_window,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Checkbutton(
+            debug_row,
+            text="Log to Files",
+            variable=self._app._log_enabled,
+            style="Switch.TCheckbutton",
+            command=lambda: self._app.set_log_enabled(self._app._log_enabled.get()),
+        ).pack(side=tk.LEFT, padx=12)
+        ttk.Button(
+            feature_card,
+            text="Save Features",
+            style="Secondary.TButton",
+            command=self._save_features,
+        ).pack(pady=(0, 8))
+
+        ir_frame = ttk.Frame(pins_tab, style="Card.TFrame")
+        ir_frame.pack(pady=12, padx=12, fill=tk.X)
+        ttk.Label(ir_frame, text="IR GPIO Pins", style="Status.TLabel").pack(pady=(8, 4))
+        pin_row = ttk.Frame(ir_frame, style="Card.TFrame")
+        pin_row.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Label(pin_row, text="TX:", style="Body.TLabel").grid(row=0, column=0, padx=4)
+        self._ir_tx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_tx_entry.insert(0, self._app.ir_tx_pin())
+        self._ir_tx_entry.grid(row=0, column=1, padx=4, sticky="ew")
+        ttk.Label(pin_row, text="RX:", style="Body.TLabel").grid(row=0, column=2, padx=4)
+        self._ir_rx_entry = ttk.Entry(pin_row, style="App.TEntry")
+        self._ir_rx_entry.insert(0, self._app.ir_rx_pin())
+        self._ir_rx_entry.grid(row=0, column=3, padx=4, sticky="ew")
+        pin_row.columnconfigure(1, weight=1)
+        pin_row.columnconfigure(3, weight=1)
+        ttk.Button(
+            ir_frame,
+            text="Save IR Pins",
+            style="Secondary.TButton",
+            command=self._save_ir_pins,
+        ).pack(pady=(0, 8))
+
+    def _save_features(self) -> None:
+        flags = {name: var.get() for name, var in self._feature_vars.items()}
+        self._app.set_feature_flags(flags)
+
+    def _save_ir_pins(self) -> None:
+        tx_pin = self._ir_tx_entry.get().strip() or self._app.ir_tx_pin()
+        rx_pin = self._ir_rx_entry.get().strip() or self._app.ir_rx_pin()
+        self._app.set_ir_pins(tx_pin, rx_pin)
+
+    def show_pins_tab(self) -> None:
+        if hasattr(self, "_tabs"):
+            self._tabs.select(1)
 
 
 class ProxmarkScreen(BaseScreen):
@@ -1843,4 +2220,3 @@ class SaveDialog(tk.Toplevel):
         self._profile.notes = self._notes_var.get().strip() or None
         self.result = self._profile
         self.destroy()
-

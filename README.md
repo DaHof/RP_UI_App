@@ -157,3 +157,8 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 python3 src/main.py
 ```
+
+
+
+https://docs.flipper.net/zero/sub-ghz/read
+https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/main/infrared/resources/infrared/assets/tv.ir

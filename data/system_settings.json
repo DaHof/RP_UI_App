@@ -1,0 +1,8 @@
+{
+  "Scan": false,
+  "IR": true,
+  "Bluetooth": false,
+  "WiFi": false,
+  "Proxmark": false,
+  "log_enabled": true
+}
