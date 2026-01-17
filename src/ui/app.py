@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import re
 import threading
+import time
+from pathlib import Path
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, simpledialog, ttk
 from typing import Callable, Optional
 
 from data_model import CardProfile
@@ -210,15 +214,22 @@ class App(tk.Tk):
             self.show_screen("Scan")
         elif name == "IR":
             ir_screen = self._screens["IR"]
-            for label in ["Capture", "Library", "Remote", "Learn/Pair", "Send", "Settings"]:
+            for label in [
+                "Universal Remotes",
+                "Learn New Remote",
+                "Saved Remotes",
+                "Settings",
+            ]:
                 ttk.Button(
                     self._subnav,
                     text=label,
                     style="Small.TButton",
-                    command=lambda screen_name=label: ir_screen.show_subscreen(screen_name),
+                    command=lambda screen_name=label: ir_screen.show_subscreen(
+                        screen_name
+                    ),
                 ).pack(side=tk.LEFT, padx=4, pady=4)
             self.show_screen("IR")
-            ir_screen.show_subscreen("Capture")
+            ir_screen.show_subscreen("Universal Remotes")
         elif name == "Bluetooth":
             bluetooth_screen = self._screens["Bluetooth"]
             for label in ["Discovery", "Pairing", "Connection", "Audio", "Library", "Shortcuts"]:
@@ -563,39 +574,114 @@ class SettingsScreen(BaseScreen):
         self._app.set_ir_pins(tx_pin, rx_pin)
 
 
+
 class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
+        from ir.flipper_ir import FlipperIRSignal, parse_library_signals, serialize_signals
+        from ir.ir_library import IRLibraryStore
         from ir.lirc_client import LircClient
 
-        self._status = tk.StringVar(value="Pick an IR tool.")
-        self._debug_status = tk.StringVar(value="Debug ready.")
+        self._flipper_signal = FlipperIRSignal
+        self._parse_library_signals = parse_library_signals
+        self._serialize_signals = serialize_signals
+
+        self._status = tk.StringVar(value="")
         self._captures: list[dict[str, str]] = []
         self._capture_detail = tk.StringVar(value="No captures yet.")
+        self._last_capture: Optional[dict[str, str]] = None
         self._capture_thread: Optional[threading.Thread] = None
         self._capture_stop = threading.Event()
         self._client = LircClient()
-        status_row = ttk.Frame(self, style="App.TFrame")
-        status_row.pack(fill=tk.X, padx=16, pady=(10, 4))
-        ttk.Label(status_row, text="IR", style="Title.TLabel").pack(side=tk.LEFT)
-        ttk.Label(status_row, textvariable=self._status, style="Muted.TLabel").pack(
-            side=tk.LEFT, padx=12
+
+        self._data_dir = Path(__file__).resolve().parents[2] / "data"
+        self._saved_dir = self._data_dir / "ir" / "saved remotes"
+        self._universal_dir = self._data_dir / "universal"
+        self._ir_settings_path = self._data_dir / "ir_settings.json"
+        self._ir_library = IRLibraryStore(self._saved_dir)
+
+        self._saved_detail = tk.StringVar(value="Select a remote")
+        self._saved_button_detail = tk.StringVar(value="Select a button")
+        self._saved_remotes: list[str] = []
+        self._saved_buttons: list[str] = []
+        self._selected_saved_remote_signals: list[FlipperIRSignal] = []
+
+        self._universal_device = tk.StringVar(value="TV")
+        self._universal_selected_button = tk.StringVar(value="Select a button")
+        self._universal_progress = tk.StringVar(value="Progress: -")
+        self._universal_model = tk.StringVar(value="Model: -")
+        self._universal_delay = self._load_universal_delay()
+        self._universal_scan_thread: Optional[threading.Thread] = None
+        self._universal_scan_stop = threading.Event()
+        self._learn_instruction = tk.StringVar(
+            value="Point the remote at the IR port and push the button."
         )
 
+        self._universal_layouts = {
+            "TV": [
+                "Power",
+                "Mute",
+                "Vol+",
+                "Vol-",
+                "Ch+",
+                "Ch-",
+            ],
+            "Audio System": [
+                "Power",
+                "Mute",
+                "Vol+",
+                "Vol-",
+                "Bass+",
+                "Bass-",
+                "Treble+",
+                "Treble-",
+            ],
+            "Projector": [
+                "Power",
+                "Source",
+                "Menu",
+                "Up",
+                "Down",
+                "Left",
+                "Right",
+                "OK",
+                "Back",
+                "Vol+",
+                "Vol-",
+                "Keystone+",
+                "Keystone-",
+            ],
+            "Air Conditioner": [
+                "Power",
+                "Mode",
+                "Temp+",
+                "Temp-",
+                "Fan",
+                "Swing",
+            ],
+            "LED": [
+                "Power",
+                "Bright+",
+                "Bright-",
+                "Speed+",
+                "Speed-",
+                "Color+",
+                "Color-",
+            ],
+        }
+
         self._ir_screen_host = ttk.Frame(self, style="App.TFrame")
-        self._ir_screen_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 10))
+        self._ir_screen_host.pack(fill=tk.BOTH, expand=True, padx=16, pady=(10, 10))
 
         self._ir_screens: dict[str, tk.Frame] = {}
         self._current_ir_screen: Optional[tk.Frame] = None
 
-        self._add_ir_screen("Capture", self._build_capture_screen())
-        self._add_ir_screen("Library", self._build_library_screen())
-        self._add_ir_screen("Remote", self._build_remote_screen())
-        self._add_ir_screen("Learn/Pair", self._build_learn_screen())
-        self._add_ir_screen("Send", self._build_send_screen())
-        self._add_ir_screen("Settings", self._build_settings_screen())
+        self._add_ir_screen("Universal Remotes", self._build_universal_screen())
+        self._add_ir_screen("Learn New Remote", self._build_learn_screen())
+        self._add_ir_screen("Saved Remotes", self._build_saved_remotes_screen())
+        self._add_ir_screen("Settings", self._build_ir_settings_screen())
 
-        self._show_ir_screen("Capture")
+        self._show_ir_screen("Universal Remotes")
 
     def _add_ir_screen(self, name: str, frame: tk.Frame) -> None:
         self._ir_screens[name] = frame
@@ -607,26 +693,25 @@ class IRScreen(BaseScreen):
         self._current_ir_screen.pack(fill=tk.BOTH, expand=True)
 
     def show_subscreen(self, name: str) -> None:
+        if name != "Learn New Remote" and self._capture_thread:
+            self._stop_capture()
         self._show_ir_screen(name)
+        if name == "Learn New Remote":
+            self._begin_learn_session()
+        if name == "Saved Remotes":
+            self._refresh_saved_remotes()
 
-    def _build_capture_screen(self) -> tk.Frame:
+    def _build_universal_screen(self) -> tk.Frame:
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("Start Capture", self._start_capture),
-                ("Stop Capture", self._stop_capture),
-                ("Save to Library", lambda: self._set_status("Save current capture.")),
-            ],
-        )
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(0, weight=1)
 
-        captures = ttk.Frame(frame, style="Card.TFrame")
-        captures.pack(fill=tk.X, pady=6)
-        ttk.Label(captures, text="Captures", style="Status.TLabel").pack(pady=(6, 4))
-        self._capture_list = tk.Listbox(
-            captures,
-            height=4,
+        device_card = ttk.Frame(frame, style="Card.TFrame")
+        device_card.grid(row=0, column=0, sticky="ns", padx=(0, 10), pady=6)
+        ttk.Label(device_card, text="Devices", style="Status.TLabel").pack(pady=(8, 4))
+        self._universal_device_list = tk.Listbox(
+            device_card,
+            height=8,
             bg=self._app._colors["panel"],
             fg=self._app._colors["text"],
             selectbackground=self._app._colors["accent"],
@@ -634,71 +719,181 @@ class IRScreen(BaseScreen):
             highlightthickness=0,
             relief=tk.FLAT,
         )
-        self._capture_list.pack(fill=tk.X, padx=8, pady=(0, 6))
-        self._capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
+        self._universal_device_list.pack(fill=tk.BOTH, padx=8, pady=(0, 8))
+        self._universal_device_list.bind("<<ListboxSelect>>", self._on_universal_device_select)
+
+        for device in self._universal_layouts.keys():
+            self._universal_device_list.insert(tk.END, device)
+        self._universal_device_list.selection_set(0)
+
+        right = ttk.Frame(frame, style="App.TFrame")
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(2, weight=1)
+
+        info = ttk.Frame(right, style="Card.TFrame")
+        info.pack(fill=tk.X, pady=6)
+        ttk.Label(info, text="Selected Button", style="Status.TLabel").pack(pady=(6, 2))
+        ttk.Label(
+            info,
+            textvariable=self._universal_selected_button,
+            style="Body.TLabel",
+            wraplength=420,
+        ).pack(pady=2)
+        ttk.Label(info, textvariable=self._universal_model, style="Muted.TLabel").pack(pady=2)
+        ttk.Label(info, textvariable=self._universal_progress, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+
+        controls = ttk.Frame(right, style="Card.TFrame")
+        controls.pack(fill=tk.X, pady=6)
+        button_row = ttk.Frame(controls, style="Card.TFrame")
+        button_row.pack(fill=tk.X, padx=8, pady=8)
+        ttk.Button(
+            button_row, text="Start", style="Small.TButton", command=self._start_universal_scan
+        ).grid(row=0, column=0, padx=4, sticky="ew")
+        ttk.Button(
+            button_row, text="Stop", style="Small.TButton", command=self._stop_universal_scan
+        ).grid(row=0, column=1, padx=4, sticky="ew")
+        button_row.columnconfigure(0, weight=1)
+        button_row.columnconfigure(1, weight=1)
+
+        self._universal_button_host = ttk.Frame(right, style="Card.TFrame")
+        self._universal_button_host.pack(fill=tk.BOTH, expand=True, pady=6)
+        ttk.Label(
+            self._universal_button_host, text="Remote Buttons", style="Status.TLabel"
+        ).pack(pady=(8, 4))
+        self._universal_button_grid = ttk.Frame(self._universal_button_host, style="Card.TFrame")
+        self._universal_button_grid.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        self._render_universal_buttons(self._universal_device.get())
+        return frame
+    def _build_learn_screen(self) -> tk.Frame:
+        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
+        frame.columnconfigure(0, weight=1)
+
+        control_card = ttk.Frame(frame, style="Card.TFrame")
+        control_card.pack(fill=tk.X, pady=6)
+        ttk.Label(control_card, text="Learn New Remote", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        ttk.Label(
+            control_card,
+            textvariable=self._learn_instruction,
+            style="Body.TLabel",
+            wraplength=420,
+        ).pack(pady=(0, 6))
+        button_row = ttk.Frame(control_card, style="Card.TFrame")
+        button_row.pack(fill=tk.X, padx=8, pady=8)
+        self._learn_retry_btn = ttk.Button(
+            button_row, text="Retry", style="Small.TButton", command=self._retry_learn
+        )
+        self._learn_retry_btn.grid(row=0, column=0, padx=4, sticky="ew")
+        self._learn_send_btn = ttk.Button(
+            button_row, text="Send", style="Small.TButton", command=self._send_learned_signal
+        )
+        self._learn_send_btn.grid(row=0, column=1, padx=4, sticky="ew")
+        self._learn_save_btn = ttk.Button(
+            button_row, text="Save", style="Small.TButton", command=self._save_learned_signal
+        )
+        self._learn_save_btn.grid(row=0, column=2, padx=4, sticky="ew")
+        for idx in range(3):
+            button_row.columnconfigure(idx, weight=1)
+
+        captures = ttk.Frame(frame, style="Card.TFrame")
+        captures.pack(fill=tk.BOTH, expand=True, pady=6)
+        ttk.Label(captures, text="Captured Signals", style="Status.TLabel").pack(
+            pady=(8, 4)
+        )
+        self._learn_capture_list = tk.Listbox(
+            captures,
+            height=8,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._learn_capture_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 6))
+        self._learn_capture_list.bind("<<ListboxSelect>>", self._on_capture_select)
         ttk.Label(captures, textvariable=self._capture_detail, style="Muted.TLabel").pack(
             pady=(0, 8)
         )
         return frame
 
-    def _build_library_screen(self) -> tk.Frame:
+    def _build_saved_remotes_screen(self) -> tk.Frame:
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("Browse Signals", lambda: self._set_status("Browse saved IR signals.")),
-                ("Send Selected", lambda: self._set_status("Send selected IR signal.")),
-            ],
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=2)
+        frame.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(frame, style="Card.TFrame")
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=6)
+        ttk.Label(left, text="Saved Remotes", style="Status.TLabel").pack(pady=(8, 4))
+        self._saved_remote_list = tk.Listbox(
+            left,
+            height=10,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
         )
+        self._saved_remote_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 6))
+        self._saved_remote_list.bind("<<ListboxSelect>>", self._on_saved_remote_select)
+        ttk.Label(left, textvariable=self._saved_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+        ttk.Button(
+            left, text="Edit Remote", style="Small.TButton", command=self._open_saved_editor
+        ).pack(pady=(0, 8))
+
+        right = ttk.Frame(frame, style="App.TFrame")
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        button_card = ttk.Frame(right, style="Card.TFrame")
+        button_card.pack(fill=tk.BOTH, expand=True, pady=6)
+        ttk.Label(button_card, text="Buttons", style="Status.TLabel").pack(pady=(8, 4))
+        self._saved_button_list = tk.Listbox(
+            button_card,
+            height=6,
+            bg=self._app._colors["panel"],
+            fg=self._app._colors["text"],
+            selectbackground=self._app._colors["accent"],
+            selectforeground="#0b1020",
+            highlightthickness=0,
+            relief=tk.FLAT,
+        )
+        self._saved_button_list.pack(fill=tk.X, padx=8, pady=(0, 6))
+        self._saved_button_list.bind("<<ListboxSelect>>", self._on_saved_button_select)
+        ttk.Label(button_card, textvariable=self._saved_button_detail, style="Muted.TLabel").pack(
+            pady=(0, 8)
+        )
+        self._saved_button_grid = ttk.Frame(button_card, style="Card.TFrame")
+        self._saved_button_grid.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
         return frame
 
-    def _build_remote_screen(self) -> tk.Frame:
+    def _build_ir_settings_screen(self) -> tk.Frame:
         frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("Pick Device", lambda: self._set_status("Select a device profile.")),
-                ("Favorites", lambda: self._set_status("Open favorite buttons.")),
-            ],
-        )
-        return frame
+        delay_card = ttk.Frame(frame, style="Card.TFrame")
+        delay_card.pack(fill=tk.X, pady=6)
+        ttk.Label(
+            delay_card, text="Universal Remote Delay (s)", style="Status.TLabel"
+        ).pack(pady=(8, 4))
+        self._delay_entry = ttk.Entry(delay_card, style="App.TEntry")
+        self._delay_entry.insert(0, f"{self._universal_delay:.2f}")
+        self._delay_entry.pack(fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Button(
+            delay_card,
+            text="Save Delay",
+            style="Secondary.TButton",
+            command=self._save_universal_delay,
+        ).pack(pady=(0, 8))
 
-    def _build_learn_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("Guided Learn", lambda: self._set_status("Start guided learning.")),
-                ("Edit Profile", lambda: self._set_status("Edit device mappings.")),
-            ],
-        )
-        return frame
-
-    def _build_send_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("Protocol Send", lambda: self._set_status("Send by protocol.")),
-                ("Raw Send", lambda: self._set_status("Send raw timings.")),
-            ],
-        )
-        return frame
-
-    def _build_settings_screen(self) -> tk.Frame:
-        frame = ttk.Frame(self._ir_screen_host, style="App.TFrame")
-        self._build_tool_group(
-            frame,
-            title="",
-            buttons=[
-                ("IR Hardware", lambda: self._set_status("Open IR settings.")),
-                ("Import/Export", lambda: self._set_status("Import or export signals.")),
-            ],
-        )
         pin_status = ttk.Frame(frame, style="Card.TFrame")
         pin_status.pack(fill=tk.X, pady=6)
         ttk.Label(pin_status, text="IR Pins", style="Status.TLabel").pack(pady=(6, 2))
@@ -713,105 +908,493 @@ class IRScreen(BaseScreen):
             style="Secondary.TButton",
             command=self._open_ir_pin_settings,
         ).pack(pady=(0, 8))
-        debug = ttk.Frame(frame, style="Card.TFrame")
-        debug.pack(fill=tk.X, pady=6)
-        ttk.Label(debug, text="Debug", style="Status.TLabel").pack(pady=(8, 4))
-        ttk.Label(debug, textvariable=self._debug_status, style="Body.TLabel").pack(pady=2)
-        debug_buttons = ttk.Frame(debug, style="Card.TFrame")
-        debug_buttons.pack(fill=tk.X, padx=8, pady=6)
-        ttk.Button(
-            debug_buttons,
-            text="Check Pins",
-            style="Secondary.TButton",
-            command=self._check_pins,
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Button(
-            debug_buttons,
-            text="Mark OK",
-            style="Secondary.TButton",
-            command=lambda: self._debug_status.set("IR debug status: OK."),
-        ).pack(side=tk.LEFT, padx=4)
         return frame
-
-    def _build_tool_group(
-        self,
-        master: ttk.Frame,
-        title: str,
-        buttons: list[tuple[str, Callable[[], None]]],
-    ) -> None:
-        card = ttk.Frame(master, style="Card.TFrame")
-        card.pack(fill=tk.X, pady=6)
-        if title:
-            ttk.Label(card, text=title, style="Status.TLabel").pack(pady=(8, 4))
-        button_row = ttk.Frame(card, style="Card.TFrame")
-        button_row.pack(fill=tk.X, padx=8, pady=8)
-        for index, (label, command) in enumerate(buttons):
-            button_row.columnconfigure(index, weight=1)
-            ttk.Button(
-                button_row, text=label, style="Small.TButton", command=command
-            ).grid(row=0, column=index, padx=4, sticky="ew")
 
     def _set_status(self, message: str) -> None:
         self._status.set(message)
+    def _begin_learn_session(self) -> None:
+        self._captures.clear()
+        self._last_capture = None
+        self._capture_detail.set("No captures yet.")
+        self._learn_instruction.set(
+            "Point the remote at the IR port and push the button."
+        )
+        if hasattr(self, "_learn_retry_btn"):
+            self._learn_retry_btn.state(["disabled"])
+        if hasattr(self, "_learn_send_btn"):
+            self._learn_send_btn.state(["disabled"])
+        if hasattr(self, "_learn_save_btn"):
+            self._learn_save_btn.state(["disabled"])
+        if hasattr(self, "_learn_capture_list"):
+            self._learn_capture_list.delete(0, tk.END)
+        self._start_capture()
+
+    def _retry_learn(self) -> None:
+        self._begin_learn_session()
 
     def _start_capture(self) -> None:
         if self._capture_thread and self._capture_thread.is_alive():
-            self._set_status("Capture already running.")
             return
         self._capture_stop.clear()
-        self._set_status("Listening for IR signals via ir-keytable...")
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._capture_thread.start()
 
-    def _show_recent_captures(self) -> None:
-        if not self._captures:
-            self._add_capture(
-                name="Recent",
-                protocol="RC5",
-                data="0x1FE4",
-                source="GPIO23",
-            )
-        self._set_status("Showing recent captures.")
-
     def _stop_capture(self) -> None:
         if not self._capture_thread or not self._capture_thread.is_alive():
-            self._set_status("Capture is not running.")
             return
         self._capture_stop.set()
-        self._set_status("Stopping capture...")
 
     def _capture_loop(self) -> None:
         for event in self._client.iter_keytable_events(self._capture_stop):
             self._app.after(0, lambda payload=event: self._add_capture(**payload))
-        self._app.after(0, lambda: self._set_status("Capture stopped."))
 
     def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
+        command = self._format_scancode_bytes(data)
         capture = {
             "name": name,
-            "protocol": protocol,
-            "data": data,
+            "protocol": protocol.upper(),
+            "address": "00 00 00 00",
+            "command": command,
             "source": source,
         }
         self._captures.append(capture)
-        self._capture_list.insert(tk.END, f"{name} ({protocol}) {data}")
-        self._capture_list.selection_clear(0, tk.END)
-        self._capture_list.selection_set(tk.END)
-        self._capture_list.event_generate("<<ListboxSelect>>")
+        self._last_capture = capture
+        self._learn_instruction.set("Signal captured. Review details below.")
+        if hasattr(self, "_learn_retry_btn"):
+            self._learn_retry_btn.state(["!disabled"])
+        if hasattr(self, "_learn_send_btn"):
+            self._learn_send_btn.state(["!disabled"])
+        if hasattr(self, "_learn_save_btn"):
+            self._learn_save_btn.state(["!disabled"])
+        if hasattr(self, "_learn_capture_list"):
+            self._learn_capture_list.insert(
+                tk.END, f"{name} | {capture['protocol']} | {command}"
+            )
+            self._learn_capture_list.selection_clear(0, tk.END)
+            self._learn_capture_list.selection_set(tk.END)
+            self._learn_capture_list.event_generate("<<ListboxSelect>>")
 
     def _on_capture_select(self, event: tk.Event) -> None:
-        if not self._capture_list.curselection():
+        listbox = event.widget
+        if not listbox.curselection():
             return
-        index = self._capture_list.curselection()[0]
+        index = listbox.curselection()[0]
         capture = self._captures[index]
         detail = (
-            f"Protocol: {capture['protocol']} | Data: {capture['data']} | Source: {capture['source']}"
+            f"Protocol: {capture['protocol']} | "
+            f"Address: {capture['address']} | "
+            f"Command: {capture['command']}"
         )
         self._capture_detail.set(detail)
 
-    def _check_pins(self) -> None:
-        tx_pin = self._app.ir_tx_pin()
-        rx_pin = self._app.ir_rx_pin()
-        self._debug_status.set(f"IR pins set to TX: {tx_pin}, RX: {rx_pin}.")
+    def _selected_capture(self) -> Optional[dict[str, str]]:
+        if hasattr(self, "_learn_capture_list") and self._learn_capture_list.curselection():
+            index = self._learn_capture_list.curselection()[0]
+            return self._captures[index]
+        return self._last_capture
+
+    def _format_scancode_bytes(self, data: str) -> str:
+        match = re.search(r"([0-9a-fA-F]+)", data or "")
+        if not match:
+            return "00 00 00 00"
+        value = int(match.group(1), 16)
+        parts = [(value >> (8 * idx)) & 0xFF for idx in range(4)]
+        return " ".join(f"{part:02X}" for part in parts)
+
+    def _send_learned_signal(self) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Learn Remote", "No captured signal to send.")
+            return
+        self._set_status(
+            f"Sending {capture['protocol']} {capture['command']} (stub)."
+        )
+
+    def _save_learned_signal(self) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Learn Remote", "No captured signal to save.")
+            return
+        device = simpledialog.askstring("Device Name", "Enter the device name:")
+        if not device:
+            return
+        button_name = simpledialog.askstring("Button Name", "Enter the button name:")
+        if not button_name:
+            return
+        signals = self._ir_library.load_remote(device) or []
+        signal = self._flipper_signal(
+            name=button_name,
+            signal_type="parsed",
+            protocol=capture["protocol"],
+            address=capture["address"],
+            command=capture["command"],
+        )
+        signals.append(signal)
+        self._ir_library.save_remote_signals(device, signals)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(device)
+        messagebox.showinfo("Learn Remote", f"Saved {button_name} to {device}.")
+
+    def _refresh_saved_remotes(self) -> None:
+        self._saved_remotes = [remote.name for remote in self._ir_library.list_remotes()]
+        if hasattr(self, "_saved_remote_list"):
+            self._saved_remote_list.delete(0, tk.END)
+            for remote in self._saved_remotes:
+                self._saved_remote_list.insert(tk.END, remote)
+        self._saved_detail.set("Select a remote")
+        self._saved_buttons = []
+        self._selected_saved_remote_signals = []
+        if hasattr(self, "_saved_button_list"):
+            self._saved_button_list.delete(0, tk.END)
+        self._saved_button_detail.set("Select a button")
+        self._render_saved_button_grid()
+
+    def _select_saved_remote(self, name: str) -> None:
+        if name not in self._saved_remotes:
+            return
+        index = self._saved_remotes.index(name)
+        if hasattr(self, "_saved_remote_list"):
+            self._saved_remote_list.selection_clear(0, tk.END)
+            self._saved_remote_list.selection_set(index)
+            self._saved_remote_list.event_generate("<<ListboxSelect>>")
+
+    def _on_saved_remote_select(self, event: tk.Event) -> None:
+        if not self._saved_remote_list.curselection():
+            return
+        index = self._saved_remote_list.curselection()[0]
+        name = self._saved_remotes[index]
+        signals = self._ir_library.load_remote(name) or []
+        self._selected_saved_remote_signals = signals
+        self._saved_buttons = [signal.name for signal in signals]
+        self._saved_detail.set(f"{name} ({len(signals)} buttons)")
+        self._saved_button_list.delete(0, tk.END)
+        for button in self._saved_buttons:
+            self._saved_button_list.insert(tk.END, button)
+        self._saved_button_detail.set("Select a button")
+        self._render_saved_button_grid()
+
+    def _on_saved_button_select(self, event: tk.Event) -> None:
+        if not self._saved_button_list.curselection():
+            return
+        index = self._saved_button_list.curselection()[0]
+        signal = self._selected_saved_remote_signals[index]
+        self._saved_button_detail.set(
+            f"{signal.name} | {signal.protocol} | {signal.address} | {signal.command}"
+        )
+
+    def _render_saved_button_grid(self) -> None:
+        for child in self._saved_button_grid.winfo_children():
+            child.destroy()
+        if not self._selected_saved_remote_signals:
+            return
+        columns = 3
+        for idx, signal in enumerate(self._selected_saved_remote_signals):
+            row = idx // columns
+            col = idx % columns
+            ttk.Button(
+                self._saved_button_grid,
+                text=signal.name,
+                style="Small.TButton",
+                command=lambda payload=signal: self._send_saved_button(payload),
+            ).grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+        for col in range(columns):
+            self._saved_button_grid.columnconfigure(col, weight=1)
+
+    def _send_saved_button(self, signal: "FlipperIRSignal") -> None:
+        self._set_status(f"Sending {signal.name} (stub).")
+    def _open_saved_editor(self) -> None:
+        if not self._saved_remote_list.curselection():
+            messagebox.showinfo("Saved Remotes", "Select a remote to edit.")
+            return
+        index = self._saved_remote_list.curselection()[0]
+        remote_name = self._saved_remotes[index]
+
+        editor = tk.Toplevel(self)
+        editor.title(f"Edit {remote_name}")
+        editor.configure(bg=self._app._colors["bg"])
+
+        actions = ttk.Frame(editor, style="Card.TFrame")
+        actions.pack(padx=12, pady=12, fill=tk.BOTH, expand=True)
+
+        ttk.Button(
+            actions,
+            text="Add Button",
+            style="Secondary.TButton",
+            command=lambda: self._editor_add_button(remote_name),
+        ).pack(fill=tk.X, pady=4)
+        ttk.Button(
+            actions,
+            text="Rename Button",
+            style="Secondary.TButton",
+            command=lambda: self._editor_rename_button(remote_name),
+        ).pack(fill=tk.X, pady=4)
+        ttk.Button(
+            actions,
+            text="Delete Button",
+            style="Secondary.TButton",
+            command=lambda: self._editor_delete_button(remote_name),
+        ).pack(fill=tk.X, pady=4)
+        ttk.Button(
+            actions,
+            text="Rename Remote",
+            style="Secondary.TButton",
+            command=lambda: self._editor_rename_remote(remote_name),
+        ).pack(fill=tk.X, pady=4)
+        ttk.Button(
+            actions,
+            text="Delete Remote",
+            style="Secondary.TButton",
+            command=lambda: self._editor_delete_remote(remote_name),
+        ).pack(fill=tk.X, pady=4)
+
+    def _editor_add_button(self, remote_name: str) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Add Button", "Capture a signal first.")
+            return
+        button_name = simpledialog.askstring("Button Name", "Enter the button name:")
+        if not button_name:
+            return
+        signals = self._ir_library.load_remote(remote_name) or []
+        signals.append(
+            self._flipper_signal(
+                name=button_name,
+                signal_type="parsed",
+                protocol=capture["protocol"],
+                address=capture["address"],
+                command=capture["command"],
+            )
+        )
+        self._ir_library.save_remote_signals(remote_name, signals)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(remote_name)
+
+    def _editor_rename_button(self, remote_name: str) -> None:
+        if not self._saved_button_list.curselection():
+            messagebox.showinfo("Rename Button", "Select a button to rename.")
+            return
+        index = self._saved_button_list.curselection()[0]
+        signal = self._selected_saved_remote_signals[index]
+        new_name = simpledialog.askstring("Rename Button", "Enter new button name:")
+        if not new_name:
+            return
+        signals = list(self._selected_saved_remote_signals)
+        signals[index] = self._flipper_signal(
+            name=new_name,
+            signal_type=signal.signal_type,
+            protocol=signal.protocol,
+            address=signal.address,
+            command=signal.command,
+        )
+        self._ir_library.save_remote_signals(remote_name, signals)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(remote_name)
+
+    def _editor_delete_button(self, remote_name: str) -> None:
+        if not self._saved_button_list.curselection():
+            messagebox.showinfo("Delete Button", "Select a button to delete.")
+            return
+        index = self._saved_button_list.curselection()[0]
+        signal = self._selected_saved_remote_signals[index]
+        if not messagebox.askyesno("Delete Button", f"Delete {signal.name}?"):
+            return
+        signals = list(self._selected_saved_remote_signals)
+        signals.pop(index)
+        self._ir_library.save_remote_signals(remote_name, signals)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(remote_name)
+
+    def _editor_rename_remote(self, remote_name: str) -> None:
+        new_name = simpledialog.askstring("Rename Remote", "Enter new remote name:")
+        if not new_name:
+            return
+        self._ir_library.rename_remote(remote_name, new_name)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(new_name)
+
+    def _editor_delete_remote(self, remote_name: str) -> None:
+        if not messagebox.askyesno("Delete Remote", f"Delete {remote_name}?"):
+            return
+        self._ir_library.delete_remote(remote_name)
+        self._refresh_saved_remotes()
+
+    def _on_universal_device_select(self, event: tk.Event) -> None:
+        if self._universal_scan_thread and self._universal_scan_thread.is_alive():
+            return
+        if not self._universal_device_list.curselection():
+            return
+        index = self._universal_device_list.curselection()[0]
+        device = list(self._universal_layouts.keys())[index]
+        self._universal_device.set(device)
+        self._render_universal_buttons(device)
+        self._universal_selected_button.set("Select a button")
+        self._universal_model.set("Model: -")
+        self._universal_progress.set("Progress: -")
+
+    def _render_universal_buttons(self, device: str) -> None:
+        for child in self._universal_button_grid.winfo_children():
+            child.destroy()
+        buttons = self._universal_layouts.get(device, [])
+        columns = 3
+        for idx, label in enumerate(buttons):
+            row = idx // columns
+            col = idx % columns
+            ttk.Button(
+                self._universal_button_grid,
+                text=label,
+                style="Small.TButton",
+                command=lambda name=label: self._select_universal_button(name),
+            ).grid(row=row, column=col, padx=4, pady=4, sticky="ew")
+        for col in range(columns):
+            self._universal_button_grid.columnconfigure(col, weight=1)
+
+    def _select_universal_button(self, label: str) -> None:
+        if self._universal_scan_thread and self._universal_scan_thread.is_alive():
+            return
+        self._universal_selected_button.set(label)
+        self._universal_model.set("Model: -")
+        self._universal_progress.set("Progress: -")
+
+    def _start_universal_scan(self) -> None:
+        if self._universal_scan_thread and self._universal_scan_thread.is_alive():
+            return
+        button_label = self._universal_selected_button.get()
+        if not button_label or button_label == "Select a button":
+            messagebox.showinfo("Universal Remotes", "Select a button first.")
+            return
+        device = self._universal_device.get()
+        signals = self._load_universal_signals(device)
+        target = self._normalize_button_name(button_label)
+        filtered = [
+            item
+            for item in signals
+            if self._normalize_button_name(item.signal.name) == target
+        ]
+        if not filtered:
+            messagebox.showinfo("Universal Remotes", f"No {button_label} signals found.")
+            return
+        self._universal_scan_stop.clear()
+        self._set_universal_controls_enabled(False)
+        self._universal_scan_thread = threading.Thread(
+            target=self._run_universal_scan,
+            args=(filtered, button_label),
+            daemon=True,
+        )
+        self._universal_scan_thread.start()
+
+    def _stop_universal_scan(self) -> None:
+        if self._universal_scan_thread and self._universal_scan_thread.is_alive():
+            self._universal_scan_stop.set()
+
+    def _run_universal_scan(self, signals: list["FlipperIRLibrarySignal"], label: str) -> None:
+        total = len(signals)
+        for idx, signal in enumerate(signals, start=1):
+            if self._universal_scan_stop.is_set():
+                break
+            self._app.after(
+                0,
+                lambda current=signal, count=idx: self._update_universal_progress(
+                    label, current, count, total
+                ),
+            )
+            self._send_universal_signal(signal.signal)
+            time.sleep(self._universal_delay)
+        self._app.after(0, self._finish_universal_scan)
+
+    def _finish_universal_scan(self) -> None:
+        self._universal_progress.set("Progress: Stopped")
+        self._set_universal_controls_enabled(True)
+
+    def _set_universal_controls_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        self._universal_device_list.configure(state=state)
+        for child in self._universal_button_grid.winfo_children():
+            try:
+                child.configure(state=state)
+            except tk.TclError:
+                continue
+
+    def _update_universal_progress(
+        self, label: str, signal: "FlipperIRLibrarySignal", count: int, total: int
+    ) -> None:
+        self._universal_selected_button.set(label)
+        model = signal.model or "Unknown"
+        self._universal_model.set(f"Model: {model}")
+        self._universal_progress.set(f"Progress: {count}/{total}")
+
+    def _send_universal_signal(self, signal: "FlipperIRSignal") -> None:
+        self._set_status(f"Sending {signal.name} (stub).")
+
+    def _normalize_button_name(self, name: str) -> str:
+        normalized = name.strip().lower().replace(" ", "_")
+        normalized = normalized.replace("+", "_up").replace("-", "_dn")
+        mapping = {
+            "vol_up": "vol_up",
+            "vol_dn": "vol_dn",
+            "ch_up": "ch_next",
+            "ch_dn": "ch_prev",
+            "temp_up": "temp_up",
+            "temp_dn": "temp_dn",
+            "bright_up": "bright_up",
+            "bright_dn": "bright_dn",
+            "speed_up": "speed_up",
+            "speed_dn": "speed_dn",
+            "color_up": "color_up",
+            "color_dn": "color_dn",
+            "bass_up": "bass_up",
+            "bass_dn": "bass_dn",
+            "treble_up": "treble_up",
+            "treble_dn": "treble_dn",
+            "keystone_up": "keystone_up",
+            "keystone_dn": "keystone_dn",
+        }
+        return mapping.get(normalized, normalized)
+    def _load_universal_signals(self, device: str) -> list["FlipperIRLibrarySignal"]:
+        file_map = {
+            "TV": "tv.ir",
+            "Audio System": "audio.ir",
+            "Projector": "projector.ir",
+            "Air Conditioner": "ac.ir",
+            "LED": "led.ir",
+        }
+        filename = file_map.get(device, f"{device.lower().replace(' ', '_')}.ir")
+        paths = [
+            self._data_dir / "ir" / "universal" / filename,
+            self._universal_dir / filename,
+        ]
+        for path in paths:
+            if path.exists():
+                text = path.read_text(encoding="utf-8")
+                return self._parse_library_signals(text)
+        return []
+
+    def _save_universal_delay(self) -> None:
+        raw = self._delay_entry.get().strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            messagebox.showinfo("Settings", "Enter a valid number.")
+            return
+        value = max(0.1, min(5.0, value))
+        self._universal_delay = value
+        self._store_universal_delay(value)
+        self._delay_entry.delete(0, tk.END)
+        self._delay_entry.insert(0, f"{value:.2f}")
+
+    def _load_universal_delay(self) -> float:
+        if not self._ir_settings_path.exists():
+            return 0.5
+        try:
+            payload = json.loads(self._ir_settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return 0.5
+        return float(payload.get("universal_delay", 0.5))
+
+    def _store_universal_delay(self, value: float) -> None:
+        payload = {"universal_delay": value}
+        self._ir_settings_path.write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
 
     def _open_ir_pin_settings(self) -> None:
         self._app.show_section("Scan")
@@ -1260,3 +1843,4 @@ class SaveDialog(tk.Toplevel):
         self._profile.notes = self._notes_var.get().strip() or None
         self.result = self._profile
         self.destroy()
+
