@@ -24,6 +24,15 @@ class DiagnosticResult:
     suggested_fixes: list[str]
     timestamp: str
 
+    def summary_line(self) -> str:
+        parts = []
+        for step in self.steps:
+            details = ""
+            if step.details and step.status != "PASS":
+                details = f" ({step.details})"
+            parts.append(f"{step.name}: {step.status}{details}")
+        return " / ".join(parts)
+
 
 class IRDiagnosticService:
     def __init__(self, logger: Optional[Callable[[str], None]] = None) -> None:
@@ -148,7 +157,7 @@ class IRDiagnosticService:
         if not shutil.which("mode2"):
             return DiagnosticStepResult("RX Activity Test", "WARN", "mode2 not available.")
         output = self._capture_mode2(rx_device, duration=5.0)
-        if self._has_pulse(output):
+        if self._has_rx_activity(output):
             return DiagnosticStepResult("RX Activity Test", "PASS", "Pulse/space detected.")
         return DiagnosticStepResult("RX Activity Test", "WARN", "No pulse/space detected.")
 
@@ -193,7 +202,7 @@ class IRDiagnosticService:
         if not tx_succeeded:
             return DiagnosticStepResult("Loopback Test", "WARN", "Skipped due to TX failure.")
         output = self._loopback_capture(rx_device, tx_device)
-        if self._has_pulse(output):
+        if self._has_rx_activity(output):
             return DiagnosticStepResult("Loopback Test", "PASS", "Pulse/space detected.")
         return DiagnosticStepResult("Loopback Test", "WARN", "No pulse/space detected.")
 
@@ -303,13 +312,18 @@ class IRDiagnosticService:
                 process.terminate()
                 process.wait(timeout=1.0)
 
-    def _has_pulse(self, output: str) -> bool:
-        return bool(re.search(r"\b(pulse|space)\b", output, re.IGNORECASE))
+    def _has_rx_activity(self, output: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(pulse|space|code:|scancode)\b", output, re.IGNORECASE
+            )
+        )
 
     def _select_rx_device(self, devices: list[str]) -> Optional[str]:
         if not devices or not shutil.which("mode2"):
             return None
-        for device in devices:
+        preferred = sorted(devices, key=lambda dev: (dev != "/dev/lirc1", dev))
+        for device in preferred:
             output = self._capture_mode2(device, duration=0.5)
             if "Invalid argument" in output or "invalid argument" in output:
                 continue
