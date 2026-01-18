@@ -469,7 +469,7 @@ class LircClient:
         bursts: List[List[int]] = []
         current: List[int] = []
         for value in data:
-            if value > 20000 and current:
+            if value > 1000000 and current:
                 if len(current) % 2 == 1:
                     current = current[:-1]
                 if current:
