@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import threading
+import tempfile
 from typing import Iterable, Iterator, List, Optional, Tuple
 
 
@@ -47,6 +48,50 @@ class LircClient:
             message = result.stderr.strip() or result.stdout.strip()
             return False, message or "ir-ctl failed to send."
         return True, "Sent."
+
+    def send_raw(
+        self,
+        frequency: Optional[int],
+        duty_cycle: Optional[float],
+        data: Optional[List[int]],
+    ) -> Tuple[bool, str]:
+        if not data:
+            return False, "Missing raw signal data."
+        device = self._select_tx_device()
+        if not device:
+            return False, "No writable /dev/lirc* device found."
+        if not shutil.which("ir-ctl"):
+            return False, "ir-ctl not available."
+        lines: List[str] = []
+        if frequency:
+            lines.append(f"carrier {frequency}")
+        if duty_cycle is not None:
+            lines.append(f"duty_cycle {duty_cycle:.6f}")
+        for index, value in enumerate(data):
+            label = "pulse" if index % 2 == 0 else "space"
+            lines.append(f"{label} {value}")
+        content = "\n".join(lines) + "\n"
+        temp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", delete=False
+            ) as handle:
+                handle.write(content)
+                temp_path = handle.name
+            command = ["ir-ctl", "-d", device, "-s", temp_path]
+            result = subprocess.run(
+                command, capture_output=True, text=True, check=False
+            )
+            if result.returncode != 0:
+                message = result.stderr.strip() or result.stdout.strip()
+                return False, message or "ir-ctl failed to send raw signal."
+            return True, "Sent."
+        finally:
+            if temp_path:
+                try:
+                    Path(temp_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def start_capture(self) -> None:
         raise NotImplementedError("LIRC integration not wired yet.")
