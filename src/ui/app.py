@@ -614,22 +614,6 @@ class HomeScreen(BaseScreen):
                 justify=tk.LEFT,
             ).pack(anchor="w", pady=(0, 10))
 
-        boot_result = self._app.ir_boot_diagnostic()
-        if boot_result:
-            summary = f"Boot diagnostic: {boot_result.status}"
-            ttk.Label(
-                self._status_host,
-                text=summary,
-                style="Muted.TLabel",
-            ).pack(anchor="w", pady=(0, 6))
-            ttk.Label(
-                self._status_host,
-                text=boot_result.summary_line(),
-                style="Muted.TLabel",
-                wraplength=420,
-                justify=tk.LEFT,
-            ).pack(anchor="w", pady=(0, 10))
-
         enabled_modules = [name for name, enabled in self._app._feature_flags.items() if enabled]
         if not enabled_modules:
             ttk.Label(
@@ -643,16 +627,7 @@ class HomeScreen(BaseScreen):
             row = ttk.Frame(self._status_host, style="Card.TFrame")
             row.pack(fill=tk.X, pady=4, anchor="w")
             if name == "IR":
-                if not boot_result:
-                    continue
-                self._set_ir_statuses(boot_result)
-                ttk.Label(row, text="IR RX", style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
-                self._ir_rx_canvas = self._make_status_light(row)
-                if self._app._ir_detected["tx"]:
-                    ttk.Label(row, text="IR TX", style="Body.TLabel").pack(
-                        side=tk.LEFT, padx=(12, 8)
-                    )
-                    self._ir_tx_canvas = self._make_status_light(row)
+                continue
             else:
                 ttk.Label(row, text=name, style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
                 light = self._make_status_light(row)
