@@ -463,13 +463,13 @@ class LircClient:
             "has_data": bool(data),
         }
 
-    def _split_bursts(self, data: List[int]) -> List[List[int]]:
+    def _split_bursts(self, data: List[int], gap_us: int) -> List[List[int]]:
         if not data:
             return []
         bursts: List[List[int]] = []
         current: List[int] = []
         for value in data:
-            if value > 1000000 and current:
+            if value > gap_us and current:
                 if len(current) % 2 == 1:
                     current = current[:-1]
                 if current:
@@ -487,13 +487,18 @@ class LircClient:
     def _decode_best_burst(
         self, data: List[int]
     ) -> Tuple[Optional["DecodedIR"], List[int]]:
-        bursts = self._split_bursts(data)
+        bursts = self._split_bursts(data, 1000000)
         if not bursts:
             return None, data
         best: List[int] = max(bursts, key=len)
         decoded_best: Optional["DecodedIR"] = None
         decoded_burst: List[int] = []
-        for burst in bursts:
+        decode_candidates = bursts
+        if len(bursts) == 1:
+            fallback = self._split_bursts(data, 20000)
+            if fallback:
+                decode_candidates = fallback
+        for burst in decode_candidates:
             if len(burst) < 60:
                 continue
             decoded = decode_raw_timings(burst)
