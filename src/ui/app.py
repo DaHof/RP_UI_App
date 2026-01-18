@@ -1435,8 +1435,11 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
-        self._set_status(
-            f"Sending {capture['protocol']} {capture['command']} (stub)."
+        self._send_parsed_signal(
+            capture["protocol"],
+            capture.get("address"),
+            capture.get("command"),
+            "Learn Remote",
         )
 
     def _save_learned_signal(self) -> None:
@@ -1557,7 +1560,13 @@ class IRScreen(BaseScreen):
             self._saved_button_grid.columnconfigure(col, weight=1)
 
     def _send_saved_button(self, signal: "FlipperIRSignal") -> None:
-        self._set_status(f"Sending {signal.name} (stub).")
+        self._send_parsed_signal(
+            signal.protocol,
+            signal.address,
+            signal.command,
+            "Saved Remotes",
+            signal.name,
+        )
     def _open_saved_editor(self) -> None:
         selection = self._saved_remote_list.selection()
         if not selection:
@@ -1806,7 +1815,32 @@ class IRScreen(BaseScreen):
         self._universal_progress_value.set(float(count))
 
     def _send_universal_signal(self, signal: "FlipperIRSignal") -> None:
-        self._set_status(f"Sending {signal.name} (stub).")
+        self._send_parsed_signal(
+            signal.protocol,
+            signal.address,
+            signal.command,
+            "Universal Remotes",
+            signal.name,
+        )
+
+    def _send_parsed_signal(
+        self,
+        protocol: Optional[str],
+        address: Optional[str],
+        command: Optional[str],
+        context: str,
+        label: Optional[str] = None,
+    ) -> None:
+        if not protocol or not address or not command:
+            messagebox.showerror(context, "Missing signal data to send.")
+            return
+        success, message = self._client.send_parsed(protocol, address, command)
+        if success:
+            name = label or protocol
+            self._set_status(f"Sent {name}.")
+            return
+        messagebox.showerror(context, message)
+        self._set_status(message)
 
     def _normalize_button_name(self, name: str) -> str:
         normalized = name.strip().lower().replace(" ", "_")
