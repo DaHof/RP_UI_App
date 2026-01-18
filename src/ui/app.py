@@ -1047,6 +1047,8 @@ class IRScreen(BaseScreen):
         self._selected_saved_remote_signals: list[FlipperIRSignal] = []
         self._saved_tree_nodes: dict[str, str] = {}
         self._saved_remote_items: dict[str, str] = {}
+        self._saved_group = tk.StringVar(value="All")
+        self._saved_groups: list[str] = []
 
         self._universal_device = tk.StringVar(value="TV")
         self._universal_selected_button = tk.StringVar(value="Select a button")
@@ -1279,6 +1281,17 @@ class IRScreen(BaseScreen):
 
         left = ttk.Frame(frame, style="Card.TFrame")
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=6)
+        group_row = ttk.Frame(left, style="Card.TFrame")
+        group_row.pack(fill=tk.X, padx=8, pady=(8, 4))
+        ttk.Label(group_row, text="Group", style="Muted.TLabel").pack(side=tk.LEFT)
+        self._saved_group_picker = ttk.Combobox(
+            group_row,
+            textvariable=self._saved_group,
+            state="readonly",
+            values=["All"],
+        )
+        self._saved_group_picker.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(8, 0))
+        self._saved_group_picker.bind("<<ComboboxSelected>>", self._on_saved_group_change)
         ttk.Label(left, text="Saved Remotes", style="Status.TLabel").pack(pady=(8, 4))
         self._saved_remote_list = ttk.Treeview(
             left,
@@ -1590,22 +1603,27 @@ class IRScreen(BaseScreen):
                 self._saved_remote_list.delete(item)
             self._saved_tree_nodes.clear()
             self._saved_remote_items.clear()
+            groups = set()
             for remote in self._saved_remotes:
-                parts = remote.split("/")
-                parent = ""
-                path = ""
-                for idx, part in enumerate(parts):
-                    path = f"{path}/{part}" if path else part
-                    if idx == len(parts) - 1:
-                        item_id = self._saved_remote_list.insert(parent, tk.END, text=part)
-                        self._saved_remote_items[item_id] = remote
-                    else:
-                        if path in self._saved_tree_nodes:
-                            parent = self._saved_tree_nodes[path]
-                        else:
-                            folder_id = self._saved_remote_list.insert(parent, tk.END, text=part)
-                            self._saved_tree_nodes[path] = folder_id
-                            parent = folder_id
+                if "/" in remote:
+                    groups.add(remote.split("/", 1)[0])
+                else:
+                    groups.add("Ungrouped")
+            self._saved_groups = ["All", *sorted(groups)]
+            if hasattr(self, "_saved_group_picker"):
+                self._saved_group_picker.configure(values=self._saved_groups)
+                if self._saved_group.get() not in self._saved_groups:
+                    self._saved_group.set("All")
+            selected_group = self._saved_group.get()
+            for remote in self._saved_remotes:
+                if "/" in remote:
+                    group, name = remote.split("/", 1)
+                else:
+                    group, name = "Ungrouped", remote
+                if selected_group not in {"All", group}:
+                    continue
+                item_id = self._saved_remote_list.insert("", tk.END, text=name)
+                self._saved_remote_items[item_id] = remote
         self._saved_detail.set("Select a remote")
         self._saved_buttons = []
         self._selected_saved_remote_signals = []
@@ -1632,8 +1650,6 @@ class IRScreen(BaseScreen):
             return
         item = selection[0]
         if item not in self._saved_remote_items:
-            is_open = self._saved_remote_list.item(item, "open")
-            self._saved_remote_list.item(item, open=not is_open)
             return
         name = self._saved_remote_items[item]
         signals = self._ir_library.load_remote(name) or []
@@ -1676,6 +1692,15 @@ class IRScreen(BaseScreen):
             self._saved_button_grid.columnconfigure(col, weight=1)
 
     def _send_saved_button(self, signal: "FlipperIRSignal") -> None:
+        if signal.signal_type == "raw":
+            success, message = self._client.send_raw(
+                signal.frequency, signal.duty_cycle, signal.data
+            )
+            if not success:
+                messagebox.showerror("Saved Remotes", message)
+            else:
+                self._set_status(f"Sent {signal.name}.")
+            return
         self._send_parsed_signal(
             signal.protocol,
             signal.address,
@@ -1683,6 +1708,9 @@ class IRScreen(BaseScreen):
             "Saved Remotes",
             signal.name,
         )
+
+    def _on_saved_group_change(self, _event: tk.Event) -> None:
+        self._refresh_saved_remotes()
     def _open_saved_editor(self) -> None:
         selection = self._saved_remote_list.selection()
         if not selection:
