@@ -664,6 +664,35 @@ class HomeScreen(BaseScreen):
             return self._app._colors["error"]
         return self._app._colors["muted"]
 
+    def _set_ir_statuses(self, result: DiagnosticResult) -> None:
+        step_status = {step.name: step.status for step in result.steps}
+        rx_statuses = [
+            step_status.get("Presence Check"),
+            step_status.get("Driver/Binding Check"),
+        ]
+        tx_statuses = [step_status.get("TX Send Test")]
+        self._ir_rx_status = self._combine_statuses(rx_statuses)
+        self._ir_tx_status = self._combine_statuses(tx_statuses)
+
+    def _combine_statuses(self, statuses: list[Optional[str]]) -> str:
+        filtered = [status for status in statuses if status]
+        if not filtered:
+            return "PENDING"
+        if "FAIL" in filtered:
+            return "FAIL"
+        if "WARN" in filtered:
+            return "WARN"
+        return "PASS"
+
+    def _status_color(self, status: Optional[str]) -> str:
+        if status == "PASS":
+            return self._app._colors["accent"]
+        if status == "WARN":
+            return self._app._colors["warning"]
+        if status == "FAIL":
+            return self._app._colors["error"]
+        return self._app._colors["muted"]
+
 
 class ScanScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
