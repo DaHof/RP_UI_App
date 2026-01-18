@@ -1496,6 +1496,7 @@ class IRScreen(BaseScreen):
             return
         signal_type = str(capture.get("signal_type") or "parsed")
         raw_data = capture.get("raw_data")
+        raw_burst = capture.get("raw_burst")
         frequency = capture.get("raw_frequency")
         duty_cycle = capture.get("raw_duty_cycle")
         raw_attempted = capture.get("raw_attempted")
@@ -1515,13 +1516,14 @@ class IRScreen(BaseScreen):
         address = str(capture.get("address") or "")
         command = str(capture.get("command") or "")
         raw_line = ",".join(str(value) for value in raw_data) if raw_data else "missing"
+        raw_burst_count = len(raw_burst) if raw_burst else 0
         stamped = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = (
             f"{stamped} protocol={protocol} address={address} command={command} "
             f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line} "
             f"raw_attempted={raw_attempted} raw_device={raw_device} "
             f"raw_command={raw_command} keytable_command={keytable_command} "
-            f"raw_error={raw_error} "
+            f"raw_error={raw_error} raw_burst_count={raw_burst_count} "
             f"raw_lines={';'.join(str(item) for item in raw_lines[-10:])}"
         )
         with log_path.open("a", encoding="utf-8") as handle:
@@ -1570,6 +1572,9 @@ class IRScreen(BaseScreen):
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
         raw_data = capture.get("raw_data") or capture.get("data")
+        raw_burst = capture.get("raw_burst")
+        if raw_burst and raw_data and len(raw_burst) > len(raw_data):
+            raw_data = raw_burst
         frequency = capture.get("raw_frequency") or capture.get("frequency")
         duty_cycle = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
         if not raw_data:
