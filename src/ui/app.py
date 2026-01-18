@@ -1440,10 +1440,12 @@ class IRScreen(BaseScreen):
         duty_cycle = capture.get("raw_duty_cycle")
         raw_attempted = capture.get("raw_attempted")
         raw_device = capture.get("raw_device")
+        raw_lines = capture.get("raw_lines") or []
         if signal_type == "raw":
             raw_data = capture.get("data") or raw_data
             frequency = capture.get("frequency") or frequency
             duty_cycle = capture.get("duty_cycle") or duty_cycle
+            raw_lines = capture.get("raw_lines") or raw_lines
         self._app._log_dir.mkdir(parents=True, exist_ok=True)
         log_path = self._app._log_dir / "ir_raw_captures.log"
         protocol = str(capture.get("protocol") or "Unknown")
@@ -1454,7 +1456,8 @@ class IRScreen(BaseScreen):
         line = (
             f"{stamped} protocol={protocol} address={address} command={command} "
             f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line} "
-            f"raw_attempted={raw_attempted} raw_device={raw_device}"
+            f"raw_attempted={raw_attempted} raw_device={raw_device} "
+            f"raw_lines={';'.join(str(item) for item in raw_lines[-10:])}"
         )
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")

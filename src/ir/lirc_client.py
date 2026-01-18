@@ -352,6 +352,7 @@ class LircClient:
         signed_data: List[int] = []
         frequency: Optional[int] = None
         duty_cycle: Optional[float] = None
+        raw_lines: List[str] = []
         deadline = time.monotonic() + timeout_s
         for line in process.stdout:
             if stop_event.is_set() or capture_stop.is_set():
@@ -359,6 +360,8 @@ class LircClient:
             if time.monotonic() > deadline:
                 break
             stripped = line.strip()
+            if stripped:
+                raw_lines.append(stripped)
             if not stripped:
                 if data:
                     break
@@ -404,6 +407,7 @@ class LircClient:
             "duty_cycle": duty_cycle,
             "data": data,
             "signed_data": signed_data,
+            "raw_lines": raw_lines,
             "source": "ir-ctl",
         }
 
