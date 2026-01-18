@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
 import re
+import shutil
 import subprocess
 import threading
-from typing import Iterable, Iterator, List
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -14,13 +17,36 @@ class IRRemote:
 
 
 class LircClient:
-    """Minimal LIRC wrapper (stub) for future IR capture/send integration."""
+    """Minimal LIRC wrapper for IR capture/send integration."""
 
     def list_remotes(self) -> Iterable[IRRemote]:
         raise NotImplementedError("LIRC integration not wired yet.")
 
     def send_once(self, remote: str, button: str) -> None:
         raise NotImplementedError("LIRC integration not wired yet.")
+
+    def send_parsed(
+        self, protocol: str, address: Optional[str], command: Optional[str]
+    ) -> Tuple[bool, str]:
+        if not protocol or not address or not command:
+            return False, "Missing protocol, address, or command."
+        device = self._select_tx_device()
+        if not device:
+            return False, "No writable /dev/lirc* device found."
+        if not shutil.which("ir-ctl"):
+            return False, "ir-ctl not available."
+        scancode = self._build_scancode(protocol, address, command)
+        if not scancode:
+            return False, "Unsupported or invalid parsed signal."
+        protocol_name = protocol.strip().lower()
+        command = ["ir-ctl", "-d", device, "-S", f"{protocol_name}:{scancode}"]
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip()
+            return False, message or "ir-ctl failed to send."
+        return True, "Sent."
 
     def start_capture(self) -> None:
         raise NotImplementedError("LIRC integration not wired yet.")
@@ -59,3 +85,55 @@ class LircClient:
             "source": "ir-keytable",
             "name": key,
         }
+
+    def _select_tx_device(self) -> Optional[str]:
+        devices = sorted(str(path) for path in Path("/dev").glob("lirc*"))
+        writable = [device for device in devices if os.access(device, os.W_OK)]
+        if writable:
+            return writable[0]
+        return devices[0] if devices else None
+
+    def _build_scancode(self, protocol: str, address: str, command: str) -> Optional[str]:
+        addr_bytes = self._compact_bytes(self._parse_hex_bytes(address))
+        cmd_bytes = self._compact_bytes(self._parse_hex_bytes(command))
+        if not addr_bytes or not cmd_bytes:
+            return None
+        protocol_key = protocol.strip().lower()
+        if protocol_key in {"nec"} and len(addr_bytes) >= 1 and len(cmd_bytes) >= 1:
+            addr = addr_bytes[0]
+            cmd = cmd_bytes[0]
+            scancode = (
+                (addr << 24)
+                | ((addr ^ 0xFF) << 16)
+                | (cmd << 8)
+                | (cmd ^ 0xFF)
+            )
+            return f"0x{scancode:08x}"
+        if protocol_key in {"necext", "nec_ext", "necx"}:
+            addr = self._bytes_to_int(addr_bytes[:2])
+            cmd = self._bytes_to_int(cmd_bytes[:2])
+            scancode = (addr << 16) | cmd
+            return f"0x{scancode:08x}"
+        addr = self._bytes_to_int(addr_bytes[:2])
+        cmd = self._bytes_to_int(cmd_bytes[:2])
+        bytes_used = len(addr_bytes[:2]) + len(cmd_bytes[:2])
+        scancode = (addr << (8 * len(cmd_bytes[:2]))) | cmd
+        return f"0x{scancode:0{max(1, bytes_used) * 2}x}"
+
+    def _parse_hex_bytes(self, value: str) -> List[int]:
+        tokens = re.findall(r"[0-9a-fA-F]{2}", value)
+        return [int(token, 16) for token in tokens]
+
+    def _compact_bytes(self, values: List[int]) -> List[int]:
+        if not values:
+            return []
+        trimmed = list(values)
+        while len(trimmed) > 1 and trimmed[-1] == 0:
+            trimmed.pop()
+        return trimmed
+
+    def _bytes_to_int(self, values: List[int]) -> int:
+        total = 0
+        for value in values:
+            total = (total << 8) | value
+        return total
