@@ -86,7 +86,7 @@ def _decode_nec(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 9000, 200) and _match_us(space, 4500, 200)):
+    if not (_match_us(pulse, 9000, 400) and _match_us(space, 4500, 300)):
         return None
     bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
     if not bits or len(bits) < 32:
@@ -103,7 +103,7 @@ def _decode_nec_ext(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 9000, 200) and _match_us(space, 4500, 200)):
+    if not (_match_us(pulse, 9000, 400) and _match_us(space, 4500, 300)):
         return None
     bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
     if not bits or len(bits) < 32:
@@ -133,7 +133,7 @@ def _decode_jvc(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 8400, 0.25) and _approx(space, 4200, 0.3)):
+    if not (_match_us(pulse, 8400, 200) and _match_us(space, 4200, 200)):
         return None
     bits = _decode_pulse_distance(samples[2:], 525, 525, 1575, 16, 120)
     if not bits or len(bits) < 16:
