@@ -176,7 +176,8 @@ class LircClient:
             raw_thread = None
 
         if raw_result.get("has_data"):
-            decoded, selected = self._decode_best_burst(raw_result.get("data") or [])
+            full_data = raw_result.get("data") or []
+            decoded, selected = self._decode_best_burst(full_data)
             if decoded:
                 return {
                     "name": decoded.protocol,
@@ -191,7 +192,8 @@ class LircClient:
                     "data": None,
                     "raw_frequency": raw_result.get("frequency"),
                     "raw_duty_cycle": raw_result.get("duty_cycle"),
-                    "raw_data": selected,
+                    "raw_data": full_data,
+                    "raw_burst": selected,
                     "raw_attempted": raw_attempted,
                     "raw_device": raw_result.get("device"),
                     "raw_command": raw_result.get("command"),
@@ -209,6 +211,8 @@ class LircClient:
                 "frequency": raw_result.get("frequency"),
                 "duty_cycle": raw_result.get("duty_cycle"),
                 "data": selected,
+                "raw_data": full_data,
+                "raw_burst": selected,
                 "raw_command": raw_result.get("command"),
                 "raw_error": raw_result.get("error"),
                 "raw_lines": raw_result.get("raw_lines"),
