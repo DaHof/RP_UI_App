@@ -1824,10 +1824,27 @@ class IRScreen(BaseScreen):
         self, signal: "FlipperIRSignal", label: str
     ) -> None:
         if signal.signal_type == "parsed":
+            self._app.log_feature(
+                "IR",
+                (
+                    "Send parsed signal"
+                    f" label={label} protocol={signal.protocol}"
+                    f" address={signal.address} command={signal.command}"
+                ),
+            )
             success, message = self._client.send_parsed(
                 signal.protocol or "", signal.address, signal.command
             )
         elif signal.signal_type == "raw":
+            data_count = len(signal.data) if signal.data else 0
+            self._app.log_feature(
+                "IR",
+                (
+                    "Send raw signal"
+                    f" label={label} frequency={signal.frequency}"
+                    f" duty_cycle={signal.duty_cycle} data_count={data_count}"
+                ),
+            )
             success, message = self._client.send_raw(
                 signal.frequency, signal.duty_cycle, signal.data
             )
@@ -1854,6 +1871,14 @@ class IRScreen(BaseScreen):
         if not protocol or not address or not command:
             messagebox.showerror(context, "Missing signal data to send.")
             return
+        self._app.log_feature(
+            "IR",
+            (
+                "Send parsed signal"
+                f" label={label or protocol} protocol={protocol}"
+                f" address={address} command={command}"
+            ),
+        )
         success, message = self._client.send_parsed(protocol, address, command)
         if success:
             name = label or protocol
