@@ -1382,11 +1382,11 @@ class IRScreen(BaseScreen):
             self._app.after(0, lambda payload=event: self._add_capture(**payload))
 
     def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
-        command = self._format_scancode_bytes(data)
+        address, command = self._client.decode_scancode(protocol, data)
         capture = {
             "name": name,
             "protocol": protocol.upper(),
-            "address": "00 00 00 00",
+            "address": address,
             "command": command,
             "source": source,
         }
@@ -1421,14 +1421,6 @@ class IRScreen(BaseScreen):
             index = self._learn_capture_list.curselection()[0]
             return self._captures[index]
         return self._last_capture
-
-    def _format_scancode_bytes(self, data: str) -> str:
-        match = re.search(r"([0-9a-fA-F]+)", data or "")
-        if not match:
-            return "00 00 00 00"
-        value = int(match.group(1), 16)
-        parts = [(value >> (8 * idx)) & 0xFF for idx in range(4)]
-        return " ".join(f"{part:02X}" for part in parts)
 
     def _send_learned_signal(self) -> None:
         capture = self._selected_capture()
