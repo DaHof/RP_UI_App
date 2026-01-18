@@ -278,11 +278,26 @@ class LircClient:
         return devices[0] if devices else None
 
     def _select_rx_device(self) -> Optional[str]:
+        device = self._detect_rx_device()
+        if device:
+            return device
         devices = sorted(str(path) for path in Path("/dev").glob("lirc*"))
         readable = [device for device in devices if os.access(device, os.R_OK)]
         if readable:
             return readable[0]
         return devices[0] if devices else None
+
+    def _detect_rx_device(self) -> Optional[str]:
+        if not shutil.which("ir-keytable"):
+            return None
+        result = subprocess.run(
+            ["ir-keytable"], capture_output=True, text=True, check=False
+        )
+        output = result.stdout or ""
+        match = re.search(r"LIRC device:\s*(/dev/lirc\d+)", output)
+        if match:
+            return match.group(1)
+        return None
 
     def _capture_keytable_event(
         self,
