@@ -1356,7 +1356,7 @@ class IRScreen(BaseScreen):
         self._learn_instruction.set(
             "Point the remote at the IR port and push the button."
         )
-        self._app.log_debug("IR learn: session start")
+        self._app.log_feature("IR", "Learn session start")
         if hasattr(self, "_learn_button_row"):
             self._learn_button_row.pack_forget()
         if hasattr(self, "_learn_capture_list"):
@@ -1369,7 +1369,7 @@ class IRScreen(BaseScreen):
     def _start_capture(self) -> None:
         if self._capture_thread and self._capture_thread.is_alive():
             return
-        self._app.log_debug("IR learn: start capture thread")
+        self._app.log_feature("IR", "Learn start capture thread")
         self._capture_stop.clear()
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._capture_thread.start()
@@ -1377,18 +1377,18 @@ class IRScreen(BaseScreen):
     def _stop_capture(self) -> None:
         if not self._capture_thread or not self._capture_thread.is_alive():
             return
-        self._app.log_debug("IR learn: stop capture thread")
+        self._app.log_feature("IR", "Learn stop capture thread")
         self._capture_stop.set()
 
     def _capture_loop(self) -> None:
-        self._app.log_debug("IR learn: capture loop begin")
+        self._app.log_feature("IR", "Learn capture loop begin")
         while not self._capture_stop.is_set():
             capture = self._client.capture_signal(self._capture_stop)
             if not capture:
-                self._app.log_debug("IR learn: capture loop ended (no capture)")
+                self._app.log_feature("IR", "Learn capture loop ended (no capture)")
                 return
             self._app.after(0, lambda payload=capture: self._add_capture(payload))
-            self._app.log_debug("IR learn: capture received")
+            self._app.log_feature("IR", "Learn capture received")
             return
 
     def _add_capture(self, capture: dict[str, object]) -> None:
@@ -1396,7 +1396,7 @@ class IRScreen(BaseScreen):
         self._last_capture = capture
         self._log_ir_capture(capture)
         protocol = capture.get("protocol")
-        self._app.log_debug(f"IR learn: capture added protocol={protocol}")
+        self._app.log_feature("IR", f"Learn capture added protocol={protocol}")
         self._learn_instruction.set("Signal captured. Review details below.")
         if hasattr(self, "_learn_button_row"):
             self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
@@ -1472,6 +1472,12 @@ class IRScreen(BaseScreen):
         )
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+        if raw_command or raw_lines:
+            output = ";".join(str(item) for item in raw_lines)
+            self._app.log_feature(
+                "IR",
+                f"Learn raw capture command={raw_command} output={output}",
+            )
 
     def _selected_capture(self) -> Optional[dict[str, object]]:
         if hasattr(self, "_learn_capture_list") and self._learn_capture_list.curselection():
@@ -1484,7 +1490,7 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
-        self._app.log_debug("IR learn: send captured signal")
+        self._app.log_feature("IR", "Learn send captured signal")
         signal_type = str(capture.get("signal_type") or "parsed")
         if signal_type == "raw":
             success, message = self._client.send_raw(
@@ -1509,7 +1515,7 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to save.")
             return
-        self._app.log_debug("IR learn: save captured signal")
+        self._app.log_feature("IR", "Learn save captured signal")
         device = simpledialog.askstring("Device Name", "Enter the device name:")
         if not device:
             return
