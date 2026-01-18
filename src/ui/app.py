@@ -529,15 +529,23 @@ class App(tk.Tk):
 
     def ir_rx_device(self) -> str:
         payload = self._load_ir_settings()
-        return str(payload.get("rx_device", "/dev/lirc1"))
+        value = str(payload.get("rx_device", "")).strip()
+        if not value:
+            return "/dev/lirc1"
+        if not value.startswith("/dev/"):
+            return f"/dev/{value}"
+        return value
 
     def set_ir_rx_device(self, device: str) -> None:
+        value = device.strip()
+        if value and not value.startswith("/dev/"):
+            value = f"/dev/{value}"
         payload = self._load_ir_settings()
-        payload["rx_device"] = device
+        payload["rx_device"] = value
         self._save_ir_settings(payload)
         screen = self._screens.get("IR")
         if screen and hasattr(screen, "set_rx_device"):
-            screen.set_rx_device(device)
+            screen.set_rx_device(value)
 
     def _load_ir_settings(self) -> dict[str, object]:
         if not self._ir_settings_path.exists():
@@ -1478,6 +1486,7 @@ class IRScreen(BaseScreen):
         raw_lines = capture.get("raw_lines") or []
         raw_command = capture.get("raw_command")
         keytable_command = capture.get("keytable_command")
+        raw_error = capture.get("raw_error")
         if signal_type == "raw":
             raw_data = capture.get("data") or raw_data
             frequency = capture.get("frequency") or frequency
@@ -1495,6 +1504,7 @@ class IRScreen(BaseScreen):
             f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line} "
             f"raw_attempted={raw_attempted} raw_device={raw_device} "
             f"raw_command={raw_command} keytable_command={keytable_command} "
+            f"raw_error={raw_error} "
             f"raw_lines={';'.join(str(item) for item in raw_lines[-10:])}"
         )
         with log_path.open("a", encoding="utf-8") as handle:

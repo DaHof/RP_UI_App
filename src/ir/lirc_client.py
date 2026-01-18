@@ -44,7 +44,10 @@ class LircClient:
         self._rx_device: Optional[str] = None
 
     def set_rx_device(self, device: Optional[str]) -> None:
-        self._rx_device = device.strip() if device else None
+        value = device.strip() if device else ""
+        if value and not value.startswith("/dev/"):
+            value = f"/dev/{value}"
+        self._rx_device = value or None
 
     def list_remotes(self) -> Iterable[IRRemote]:
         raise NotImplementedError("LIRC integration not wired yet.")
@@ -190,6 +193,7 @@ class LircClient:
                 "raw_attempted": raw_attempted,
                 "raw_device": raw_result.get("device"),
                 "raw_command": raw_result.get("command"),
+                "raw_error": raw_result.get("error"),
                 "keytable_command": parsed.get("command"),
             }
             if raw_result:
@@ -237,6 +241,7 @@ class LircClient:
                 "duty_cycle": raw_result.get("duty_cycle"),
                 "data": raw_result.get("data"),
                 "raw_command": raw_result.get("command"),
+                "raw_error": raw_result.get("error"),
             }
         return None
 
@@ -359,7 +364,18 @@ class LircClient:
     ) -> Optional[dict[str, object]]:
         device = self._select_rx_device()
         if not device:
-            return None
+            return {
+                "device": None,
+                "frequency": None,
+                "duty_cycle": None,
+                "data": [],
+                "signed_data": [],
+                "raw_lines": [],
+                "command": None,
+                "source": "ir-ctl",
+                "has_data": False,
+                "error": "rx device not found",
+            }
         command = ["ir-ctl", "-r", "-d", device]
         process = subprocess.Popen(
             command,
