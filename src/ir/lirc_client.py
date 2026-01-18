@@ -67,6 +67,29 @@ class LircClient:
             return False, message or "ir-ctl failed to send."
         return True, "Sent."
 
+    def decode_scancode(self, protocol: str, scancode: str) -> Tuple[str, str]:
+        value = self._parse_scancode_value(scancode)
+        if value is None:
+            return "00", "00"
+        normalized = self._normalize_protocol(protocol)
+        if normalized == "nec":
+            bytes_ = self._int_to_bytes(value, length=4)
+            address = self._format_bytes(bytes_[:1])
+            command = self._format_bytes(bytes_[2:3])
+            return address, command
+        if normalized in {"necx", "nec_ext", "necext"}:
+            bytes_ = self._int_to_bytes(value, length=4)
+            address = self._format_bytes(bytes_[:2])
+            command = self._format_bytes(bytes_[2:4])
+            return address, command
+        if normalized in {"sony", "sony15", "sony20"}:
+            command_value = value & 0x7F
+            address_value = value >> 7
+            address = self._format_int(address_value)
+            command = self._format_int(command_value)
+            return address, command
+        return "00", self._format_int(value)
+
     def send_raw(
         self,
         frequency: Optional[int],
@@ -195,9 +218,32 @@ class LircClient:
         normalized = protocol.strip().lower()
         return self._PROTOCOL_ALIASES.get(normalized, normalized)
 
+    def _parse_scancode_value(self, value: str) -> Optional[int]:
+        match = re.search(r"(?:0x)?([0-9a-fA-F]+)", value or "")
+        if not match:
+            return None
+        return int(match.group(1), 16)
+
     def _parse_hex_bytes(self, value: str) -> List[int]:
         tokens = re.findall(r"[0-9a-fA-F]{2}", value)
         return [int(token, 16) for token in tokens]
+
+    def _int_to_bytes(self, value: int, length: Optional[int] = None) -> List[int]:
+        if length:
+            return [
+                (value >> (8 * (length - 1 - idx))) & 0xFF
+                for idx in range(length)
+            ]
+        byte_count = max(1, (value.bit_length() + 7) // 8)
+        return list(value.to_bytes(byte_count, "big"))
+
+    def _format_bytes(self, values: List[int]) -> str:
+        if not values:
+            return "00"
+        return " ".join(f"{value:02X}" for value in values)
+
+    def _format_int(self, value: int) -> str:
+        return self._format_bytes(self._int_to_bytes(value))
 
     def _compact_bytes(self, values: List[int]) -> List[int]:
         if not values:
