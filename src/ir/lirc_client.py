@@ -469,7 +469,7 @@ class LircClient:
         bursts: List[List[int]] = []
         current: List[int] = []
         for value in data:
-            if value > 12000 and current:
+            if value > 20000 and current:
                 if len(current) % 2 == 1:
                     current = current[:-1]
                 if current:
@@ -491,10 +491,17 @@ class LircClient:
         if not bursts:
             return None, data
         best: List[int] = max(bursts, key=len)
+        decoded_best: Optional["DecodedIR"] = None
+        decoded_burst: List[int] = []
         for burst in bursts:
+            if len(burst) < 60:
+                continue
             decoded = decode_raw_timings(burst)
-            if decoded:
-                return decoded, burst
+            if decoded and len(burst) > len(decoded_burst):
+                decoded_best = decoded
+                decoded_burst = burst
+        if decoded_best:
+            return decoded_best, decoded_burst
         return None, best
 
     def _normalize_signed_timings(self, signed_data: List[int]) -> List[int]:
