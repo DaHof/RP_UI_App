@@ -176,8 +176,7 @@ class LircClient:
             raw_thread = None
 
         if raw_result.get("has_data"):
-            raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
-            decoded = decode_raw_timings(raw_samples)
+            decoded, selected = self._decode_best_burst(raw_result.get("data") or [])
             if decoded:
                 return {
                     "name": decoded.protocol,
@@ -192,7 +191,7 @@ class LircClient:
                     "data": None,
                     "raw_frequency": raw_result.get("frequency"),
                     "raw_duty_cycle": raw_result.get("duty_cycle"),
-                    "raw_data": raw_result.get("data"),
+                    "raw_data": selected,
                     "raw_attempted": raw_attempted,
                     "raw_device": raw_result.get("device"),
                     "raw_command": raw_result.get("command"),
@@ -209,7 +208,7 @@ class LircClient:
                 "source": raw_result.get("source") or "ir-ctl",
                 "frequency": raw_result.get("frequency"),
                 "duty_cycle": raw_result.get("duty_cycle"),
-                "data": raw_result.get("data"),
+                "data": selected,
                 "raw_command": raw_result.get("command"),
                 "raw_error": raw_result.get("error"),
                 "raw_lines": raw_result.get("raw_lines"),
@@ -463,6 +462,40 @@ class LircClient:
             "source": "ir-ctl",
             "has_data": bool(data),
         }
+
+    def _split_bursts(self, data: List[int]) -> List[List[int]]:
+        if not data:
+            return []
+        bursts: List[List[int]] = []
+        current: List[int] = []
+        for value in data:
+            if value > 12000 and current:
+                if len(current) % 2 == 1:
+                    current = current[:-1]
+                if current:
+                    bursts.append(current)
+                current = []
+                continue
+            current.append(value)
+        if current:
+            if len(current) % 2 == 1:
+                current = current[:-1]
+            if current:
+                bursts.append(current)
+        return bursts
+
+    def _decode_best_burst(
+        self, data: List[int]
+    ) -> Tuple[Optional["DecodedIR"], List[int]]:
+        bursts = self._split_bursts(data)
+        if not bursts:
+            return None, data
+        best: List[int] = max(bursts, key=len)
+        for burst in bursts:
+            decoded = decode_raw_timings(burst)
+            if decoded:
+                return decoded, burst
+        return None, best
 
     def _normalize_signed_timings(self, signed_data: List[int]) -> List[int]:
         if not signed_data:
