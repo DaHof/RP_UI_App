@@ -1438,6 +1438,8 @@ class IRScreen(BaseScreen):
         raw_data = capture.get("raw_data")
         frequency = capture.get("raw_frequency")
         duty_cycle = capture.get("raw_duty_cycle")
+        raw_attempted = capture.get("raw_attempted")
+        raw_device = capture.get("raw_device")
         if signal_type == "raw":
             raw_data = capture.get("data") or raw_data
             frequency = capture.get("frequency") or frequency
@@ -1451,7 +1453,8 @@ class IRScreen(BaseScreen):
         stamped = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = (
             f"{stamped} protocol={protocol} address={address} command={command} "
-            f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line}"
+            f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line} "
+            f"raw_attempted={raw_attempted} raw_device={raw_device}"
         )
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")

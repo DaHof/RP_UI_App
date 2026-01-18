@@ -147,6 +147,7 @@ class LircClient:
         capture_stop = threading.Event()
         raw_result: dict[str, object] = {}
         raw_ready = threading.Event()
+        raw_attempted = False
 
         def raw_worker() -> None:
             raw = self._capture_raw_signal(stop_event, capture_stop, timeout_s)
@@ -156,6 +157,7 @@ class LircClient:
 
         raw_thread: Optional[threading.Thread] = None
         if shutil.which("ir-ctl"):
+            raw_attempted = True
             raw_thread = threading.Thread(target=raw_worker, daemon=True)
             raw_thread.start()
 
@@ -179,6 +181,8 @@ class LircClient:
                 "frequency": None,
                 "duty_cycle": None,
                 "data": None,
+                "raw_attempted": raw_attempted,
+                "raw_device": raw_result.get("device"),
             }
             if raw_result:
                 result.update(
@@ -395,6 +399,7 @@ class LircClient:
         if not data:
             return None
         return {
+            "device": device,
             "frequency": frequency,
             "duty_cycle": duty_cycle,
             "data": data,
