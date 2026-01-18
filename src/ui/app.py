@@ -537,10 +537,6 @@ class HomeScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         self._status_rows: list[tuple[str, tk.Canvas]] = []
-        self._ir_rx_canvas: Optional[tk.Canvas] = None
-        self._ir_tx_canvas: Optional[tk.Canvas] = None
-        self._ir_rx_status: Optional[str] = None
-        self._ir_tx_status: Optional[str] = None
 
         self._content = ttk.Frame(self, style="App.TFrame")
         self._content.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
@@ -593,26 +589,29 @@ class HomeScreen(BaseScreen):
         for child in self._status_host.winfo_children():
             child.destroy()
         self._status_rows.clear()
-        self._ir_rx_canvas = None
-        self._ir_tx_canvas = None
-        self._ir_rx_status = None
-        self._ir_tx_status = None
 
         boot_result = self._app.ir_boot_diagnostic()
         if boot_result:
-            summary = f"Boot diagnostic: {boot_result.status}"
             ttk.Label(
                 self._status_host,
-                text=summary,
-                style="Muted.TLabel",
+                text="IR System Check",
+                style="Status.TLabel",
             ).pack(anchor="w", pady=(0, 6))
-            ttk.Label(
-                self._status_host,
-                text=boot_result.summary_line(),
-                style="Muted.TLabel",
-                wraplength=420,
-                justify=tk.LEFT,
-            ).pack(anchor="w", pady=(0, 10))
+            for step in boot_result.steps:
+                row = ttk.Frame(self._status_host, style="Card.TFrame")
+                row.pack(fill=tk.X, pady=2, anchor="w")
+                self._make_status_indicator(row, step.status)
+                ttk.Label(row, text=step.name, style="Body.TLabel").pack(
+                    side=tk.LEFT, padx=(8, 0)
+                )
+                if step.details:
+                    ttk.Label(
+                        self._status_host,
+                        text=step.details,
+                        style="Muted.TLabel",
+                        wraplength=420,
+                        justify=tk.LEFT,
+                    ).pack(anchor="w", padx=(20, 0), pady=(0, 4))
 
         enabled_modules = [name for name, enabled in self._app._feature_flags.items() if enabled]
         if not enabled_modules:
@@ -628,10 +627,9 @@ class HomeScreen(BaseScreen):
             row.pack(fill=tk.X, pady=4, anchor="w")
             if name == "IR":
                 continue
-            else:
-                ttk.Label(row, text=name, style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
-                light = self._make_status_light(row)
-                self._status_rows.append((name, light))
+            ttk.Label(row, text=name, style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
+            light = self._make_status_light(row)
+            self._status_rows.append((name, light))
 
         self._update_status_lights()
 
@@ -651,14 +649,20 @@ class HomeScreen(BaseScreen):
             canvas.delete("all")
             canvas.create_oval(2, 2, 10, 10, fill=self._status_color("PASS"), outline=self._status_color("PASS"))
 
-        if self._ir_rx_canvas:
-            self._ir_rx_canvas.delete("all")
-            rx_color = self._status_color(self._ir_rx_status)
-            self._ir_rx_canvas.create_oval(2, 2, 10, 10, fill=rx_color, outline=rx_color)
-        if self._ir_tx_canvas:
-            self._ir_tx_canvas.delete("all")
-            tx_color = self._status_color(self._ir_tx_status)
-            self._ir_tx_canvas.create_oval(2, 2, 10, 10, fill=tx_color, outline=tx_color)
+    def _make_status_indicator(self, parent: ttk.Frame, status: str) -> tk.Canvas:
+        canvas = self._make_status_light(parent)
+        color = self._status_color(status)
+        canvas.create_oval(2, 2, 10, 10, fill=color, outline=color)
+        return canvas
+
+    def _status_color(self, status: Optional[str]) -> str:
+        if status == "PASS":
+            return self._app._colors["accent"]
+        if status == "WARN":
+            return self._app._colors["warning"]
+        if status == "FAIL":
+            return self._app._colors["error"]
+        return self._app._colors["muted"]
 
     def _set_ir_statuses(self, result: DiagnosticResult) -> None:
         step_status = {step.name: step.status for step in result.steps}
