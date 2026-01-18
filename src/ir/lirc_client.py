@@ -23,7 +23,7 @@ class LircClient:
     _PROTOCOL_ALIASES = {
         "kaseikyo": "kaseikyo",
         "nec": "nec",
-        "nec42": "nec42",
+        "nec42": "nec",
         "necext": "necx",
         "nec_ext": "necx",
         "nec-x": "necx",
