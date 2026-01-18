@@ -1693,6 +1693,20 @@ class IRScreen(BaseScreen):
 
     def _send_saved_button(self, signal: "FlipperIRSignal") -> None:
         if signal.signal_type == "raw":
+            data_count = len(signal.data) if signal.data else 0
+            self._app.log_feature(
+                "IR",
+                (
+                    "Send saved raw signal"
+                    f" label={signal.name} frequency={signal.frequency}"
+                    f" duty_cycle={signal.duty_cycle} data_count={data_count}"
+                ),
+            )
+            if not signal.data:
+                messagebox.showerror(
+                    "Saved Remotes", "Missing raw signal data to send."
+                )
+                return
             success, message = self._client.send_raw(
                 signal.frequency, signal.duty_cycle, signal.data
             )
@@ -1701,6 +1715,14 @@ class IRScreen(BaseScreen):
             else:
                 self._set_status(f"Sent {signal.name}.")
             return
+        self._app.log_feature(
+            "IR",
+            (
+                "Send saved parsed signal"
+                f" label={signal.name} protocol={signal.protocol}"
+                f" address={signal.address} command={signal.command}"
+            ),
+        )
         self._send_parsed_signal(
             signal.protocol,
             signal.address,
