@@ -200,11 +200,11 @@ class LircClient:
         if raw_thread:
             raw_ready.wait(timeout=0.2)
             raw_thread.join(timeout=0.5)
-        if raw_result:
-            raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
-            decoded = decode_raw_timings(raw_samples)
-            if decoded:
-                return {
+            if raw_result.get("has_data"):
+                raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
+                decoded = decode_raw_timings(raw_samples)
+                if decoded:
+                    return {
                     "name": decoded.protocol,
                     "signal_type": "parsed",
                     "protocol": decoded.protocol,
@@ -405,8 +405,6 @@ class LircClient:
                 signed_data.append(int(value_match.group(1)))
         process.terminate()
         data = self._normalize_signed_timings(signed_data)
-        if not data:
-            return None
         return {
             "device": device,
             "frequency": frequency,
@@ -416,6 +414,7 @@ class LircClient:
             "raw_lines": raw_lines,
             "command": " ".join(command),
             "source": "ir-ctl",
+            "has_data": bool(data),
         }
 
     def _normalize_signed_timings(self, signed_data: List[int]) -> List[int]:
