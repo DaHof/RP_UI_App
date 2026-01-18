@@ -1423,12 +1423,17 @@ class IRScreen(BaseScreen):
         return self._last_capture
 
     def _format_scancode_bytes(self, data: str) -> str:
-        match = re.search(r"([0-9a-fA-F]+)", data or "")
+        match = re.search(r"(?:0x)?([0-9a-fA-F]+)", data or "")
         if not match:
-            return "00 00 00 00"
-        value = int(match.group(1), 16)
-        parts = [(value >> (8 * idx)) & 0xFF for idx in range(4)]
-        return " ".join(f"{part:02X}" for part in parts)
+            return "00"
+        hex_value = match.group(1)
+        if len(hex_value) % 2 == 1:
+            hex_value = f"0{hex_value}"
+        parts = [
+            hex_value[index : index + 2]
+            for index in range(0, len(hex_value), 2)
+        ]
+        return " ".join(part.upper() for part in parts)
 
     def _send_learned_signal(self) -> None:
         capture = self._selected_capture()
