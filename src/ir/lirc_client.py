@@ -161,13 +161,14 @@ class LircClient:
 
         parsed = self._capture_keytable_event(stop_event, capture_stop, timeout_s)
         if parsed:
-            capture_stop.set()
             if raw_thread:
+                raw_ready.wait(timeout=1.0)
+                capture_stop.set()
                 raw_thread.join(timeout=0.5)
             protocol = str(parsed.get("protocol") or "unknown")
             scancode = str(parsed.get("data") or "")
             address, command = self.decode_scancode(protocol, scancode)
-            return {
+            result = {
                 "name": str(parsed.get("name") or "Unknown"),
                 "signal_type": "parsed",
                 "protocol": protocol.upper(),
@@ -179,9 +180,19 @@ class LircClient:
                 "duty_cycle": None,
                 "data": None,
             }
+            if raw_result:
+                result.update(
+                    {
+                        "raw_frequency": raw_result.get("frequency"),
+                        "raw_duty_cycle": raw_result.get("duty_cycle"),
+                        "raw_data": raw_result.get("data"),
+                    }
+                )
+            return result
 
         capture_stop.set()
         if raw_thread:
+            raw_ready.wait(timeout=0.2)
             raw_thread.join(timeout=0.5)
         if raw_result:
             raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
