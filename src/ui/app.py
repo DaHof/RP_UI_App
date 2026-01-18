@@ -1795,7 +1795,13 @@ class IRScreen(BaseScreen):
 
     def _set_universal_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
-        self._universal_device_list.configure(state=state)
+        try:
+            if enabled:
+                self._universal_device_list.state(("!disabled",))
+            else:
+                self._universal_device_list.state(("disabled",))
+        except tk.TclError:
+            pass
         for label, button in self._universal_buttons.items():
             target_state = state
             if not enabled and label == self._selected_universal_button:
