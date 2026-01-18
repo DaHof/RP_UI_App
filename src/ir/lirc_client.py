@@ -406,6 +406,8 @@ class LircClient:
         duty_cycle: Optional[float] = None
         raw_lines: List[str] = []
         deadline = time.monotonic() + timeout_s
+        seen_burst = False
+        burst_complete = False
         for line in process.stdout:
             if stop_event.is_set() or capture_stop.is_set():
                 break
@@ -415,7 +417,8 @@ class LircClient:
             if stripped:
                 raw_lines.append(stripped)
             if not stripped:
-                if data:
+                if data and seen_burst:
+                    burst_complete = True
                     break
                 continue
             lower = stripped.lower()
@@ -433,18 +436,33 @@ class LircClient:
                         duty_cycle = None
                 continue
             if "timeout" in lower:
-                if data:
+                if data and seen_burst:
+                    burst_complete = True
                     break
                 continue
             tokens = re.findall(r"[+-]\d+", stripped)
             if tokens:
                 for token in tokens:
-                    signed_data.append(int(token))
+                    value = int(token)
+                    signed_data.append(value)
+                    if value > 20000 and seen_burst:
+                        burst_complete = True
+                        break
+                    if value > 0:
+                        seen_burst = True
+                if burst_complete and len(signed_data) > 80:
+                    break
                 continue
             match = re.search(r"(pulse|space)\s+(\d+)", lower)
             if match:
                 value = int(match.group(2))
                 signed_data.append(value if match.group(1) == "pulse" else -value)
+                if value > 20000 and seen_burst:
+                    burst_complete = True
+                if value > 0:
+                    seen_burst = True
+                if burst_complete and len(signed_data) > 80:
+                    break
                 continue
             value_match = re.search(r"(\d+)", stripped)
             if value_match:
