@@ -11,6 +11,7 @@ import tempfile
 import time
 from typing import Iterable, Iterator, List, Optional, Tuple
 
+from ir.ir_decode import decode_raw_timings
 
 @dataclass(frozen=True)
 class IRRemote:
@@ -183,6 +184,24 @@ class LircClient:
         if raw_thread:
             raw_thread.join(timeout=0.5)
         if raw_result:
+            raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
+            decoded = decode_raw_timings(raw_samples)
+            if decoded:
+                return {
+                    "name": decoded.protocol,
+                    "signal_type": "parsed",
+                    "protocol": decoded.protocol,
+                    "address": decoded.address,
+                    "command": decoded.command,
+                    "scancode": None,
+                    "source": raw_result.get("source") or "ir-ctl",
+                    "frequency": None,
+                    "duty_cycle": None,
+                    "data": None,
+                    "raw_frequency": raw_result.get("frequency"),
+                    "raw_duty_cycle": raw_result.get("duty_cycle"),
+                    "raw_data": raw_result.get("data"),
+                }
             return {
                 "name": "RAW",
                 "signal_type": "raw",
@@ -300,7 +319,7 @@ class LircClient:
         )
         if process.stdout is None:
             return None
-        data: List[int] = []
+        signed_data: List[int] = []
         frequency: Optional[int] = None
         duty_cycle: Optional[float] = None
         deadline = time.monotonic() + timeout_s
@@ -332,22 +351,47 @@ class LircClient:
                 if data:
                     break
                 continue
+            tokens = re.findall(r"[+-]\d+", stripped)
+            if tokens:
+                for token in tokens:
+                    signed_data.append(int(token))
+                continue
             match = re.search(r"(pulse|space)\s+(\d+)", lower)
             if match:
-                data.append(int(match.group(2)))
+                value = int(match.group(2))
+                signed_data.append(value if match.group(1) == "pulse" else -value)
                 continue
             value_match = re.search(r"(\d+)", stripped)
             if value_match:
-                data.append(int(value_match.group(1)))
+                signed_data.append(int(value_match.group(1)))
         process.terminate()
+        data = self._normalize_signed_timings(signed_data)
         if not data:
             return None
         return {
             "frequency": frequency,
             "duty_cycle": duty_cycle,
             "data": data,
+            "signed_data": signed_data,
             "source": "ir-ctl",
         }
+
+    def _normalize_signed_timings(self, signed_data: List[int]) -> List[int]:
+        if not signed_data:
+            return []
+        values = [value for value in signed_data if value != 0]
+        if not values:
+            return []
+        if values[0] < 0:
+            values = values[1:]
+        abs_values = [abs(value) for value in values]
+        if len(abs_values) % 2 == 1:
+            abs_values = abs_values[:-1]
+        if abs_values and abs_values[-1] > 15000:
+            abs_values = abs_values[:-1]
+            if len(abs_values) % 2 == 1:
+                abs_values = abs_values[:-1]
+        return abs_values
 
     def _build_scancode(self, protocol: str, address: str, command: str) -> Optional[str]:
         addr_bytes = self._compact_bytes(self._parse_hex_bytes(address))
