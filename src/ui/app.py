@@ -1388,8 +1388,7 @@ class IRScreen(BaseScreen):
     def _add_capture(self, capture: dict[str, object]) -> None:
         self._captures.append(capture)
         self._last_capture = capture
-        if capture.get("raw_data"):
-            self._log_raw_capture(capture)
+        self._log_ir_capture(capture)
         self._learn_instruction.set("Signal captured. Review details below.")
         if hasattr(self, "_learn_button_row"):
             self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
@@ -1432,24 +1431,27 @@ class IRScreen(BaseScreen):
             )
         self._capture_detail.set(detail)
 
-    def _log_raw_capture(self, capture: dict[str, object]) -> None:
+    def _log_ir_capture(self, capture: dict[str, object]) -> None:
         if not self._app._log_enabled.get():
             return
+        signal_type = str(capture.get("signal_type") or "parsed")
         raw_data = capture.get("raw_data")
-        if not raw_data:
-            return
+        frequency = capture.get("raw_frequency")
+        duty_cycle = capture.get("raw_duty_cycle")
+        if signal_type == "raw":
+            raw_data = capture.get("data") or raw_data
+            frequency = capture.get("frequency") or frequency
+            duty_cycle = capture.get("duty_cycle") or duty_cycle
         self._app._log_dir.mkdir(parents=True, exist_ok=True)
         log_path = self._app._log_dir / "ir_raw_captures.log"
         protocol = str(capture.get("protocol") or "Unknown")
         address = str(capture.get("address") or "")
         command = str(capture.get("command") or "")
-        freq = capture.get("raw_frequency")
-        duty = capture.get("raw_duty_cycle")
-        raw_line = ",".join(str(value) for value in raw_data)
+        raw_line = ",".join(str(value) for value in raw_data) if raw_data else "missing"
         stamped = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = (
             f"{stamped} protocol={protocol} address={address} command={command} "
-            f"frequency={freq} duty_cycle={duty} raw={raw_line}"
+            f"frequency={frequency} duty_cycle={duty_cycle} raw={raw_line}"
         )
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
