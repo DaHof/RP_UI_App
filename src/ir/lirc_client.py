@@ -157,6 +157,7 @@ class LircClient:
         raw_result: dict[str, object] = {}
         raw_ready = threading.Event()
         raw_attempted = False
+        use_raw_only = bool(self._rx_device)
 
         def raw_worker() -> None:
             raw = self._capture_raw_signal(stop_event, capture_stop, timeout_s)
@@ -164,13 +165,61 @@ class LircClient:
                 raw_result.update(raw)
             raw_ready.set()
 
-        raw_thread: Optional[threading.Thread] = None
         if shutil.which("ir-ctl"):
             raw_attempted = True
-            raw_thread = threading.Thread(target=raw_worker, daemon=True)
-            raw_thread.start()
+            if use_raw_only:
+                raw_worker()
+            else:
+                raw_thread = threading.Thread(target=raw_worker, daemon=True)
+                raw_thread.start()
+        else:
+            raw_thread = None
 
-        parsed = self._capture_keytable_event(stop_event, capture_stop, timeout_s)
+        if raw_result.get("has_data"):
+            raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
+            decoded = decode_raw_timings(raw_samples)
+            if decoded:
+                return {
+                    "name": decoded.protocol,
+                    "signal_type": "parsed",
+                    "protocol": decoded.protocol,
+                    "address": decoded.address,
+                    "command": decoded.command,
+                    "scancode": None,
+                    "source": raw_result.get("source") or "ir-ctl",
+                    "frequency": None,
+                    "duty_cycle": None,
+                    "data": None,
+                    "raw_frequency": raw_result.get("frequency"),
+                    "raw_duty_cycle": raw_result.get("duty_cycle"),
+                    "raw_data": raw_result.get("data"),
+                    "raw_attempted": raw_attempted,
+                    "raw_device": raw_result.get("device"),
+                    "raw_command": raw_result.get("command"),
+                    "raw_error": raw_result.get("error"),
+                    "raw_lines": raw_result.get("raw_lines"),
+                }
+            return {
+                "name": "RAW",
+                "signal_type": "raw",
+                "protocol": "RAW",
+                "address": None,
+                "command": None,
+                "scancode": None,
+                "source": raw_result.get("source") or "ir-ctl",
+                "frequency": raw_result.get("frequency"),
+                "duty_cycle": raw_result.get("duty_cycle"),
+                "data": raw_result.get("data"),
+                "raw_command": raw_result.get("command"),
+                "raw_error": raw_result.get("error"),
+                "raw_lines": raw_result.get("raw_lines"),
+                "raw_attempted": raw_attempted,
+                "raw_device": raw_result.get("device"),
+            }
+
+        parsed = None if use_raw_only else self._capture_keytable_event(
+            stop_event, capture_stop, timeout_s
+        )
         if parsed:
             if raw_thread:
                 raw_ready.wait(timeout=1.0)
@@ -202,47 +251,15 @@ class LircClient:
                         "raw_frequency": raw_result.get("frequency"),
                         "raw_duty_cycle": raw_result.get("duty_cycle"),
                         "raw_data": raw_result.get("data"),
+                        "raw_lines": raw_result.get("raw_lines"),
                     }
                 )
             return result
 
-        capture_stop.set()
         if raw_thread:
+            capture_stop.set()
             raw_ready.wait(timeout=0.2)
             raw_thread.join(timeout=0.5)
-            if raw_result.get("has_data"):
-                raw_samples = raw_result.get("signed_data") or raw_result.get("data") or []
-                decoded = decode_raw_timings(raw_samples)
-                if decoded:
-                    return {
-                    "name": decoded.protocol,
-                    "signal_type": "parsed",
-                    "protocol": decoded.protocol,
-                    "address": decoded.address,
-                    "command": decoded.command,
-                    "scancode": None,
-                    "source": raw_result.get("source") or "ir-ctl",
-                    "frequency": None,
-                    "duty_cycle": None,
-                    "data": None,
-                    "raw_frequency": raw_result.get("frequency"),
-                    "raw_duty_cycle": raw_result.get("duty_cycle"),
-                    "raw_data": raw_result.get("data"),
-                }
-            return {
-                "name": "RAW",
-                "signal_type": "raw",
-                "protocol": "RAW",
-                "address": None,
-                "command": None,
-                "scancode": None,
-                "source": raw_result.get("source") or "ir-ctl",
-                "frequency": raw_result.get("frequency"),
-                "duty_cycle": raw_result.get("duty_cycle"),
-                "data": raw_result.get("data"),
-                "raw_command": raw_result.get("command"),
-                "raw_error": raw_result.get("error"),
-            }
         return None
 
     def iter_keytable_events(
