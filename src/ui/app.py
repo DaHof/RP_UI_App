@@ -359,6 +359,7 @@ class App(tk.Tk):
         screen = self._screens.get("System")
         if screen and hasattr(screen, "refresh"):
             screen.refresh()
+        self.refresh_home()
 
     def ir_diagnostics(self) -> IRDiagnosticService:
         return self._ir_diagnostics
@@ -622,10 +623,11 @@ class HomeScreen(BaseScreen):
             if name == "IR":
                 ttk.Label(row, text="IR RX", style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
                 self._ir_rx_canvas = self._make_status_light(row)
-                ttk.Label(row, text="IR TX", style="Body.TLabel").pack(
-                    side=tk.LEFT, padx=(12, 8)
-                )
-                self._ir_tx_canvas = self._make_status_light(row)
+                if self._app._ir_detected["tx"]:
+                    ttk.Label(row, text="IR TX", style="Body.TLabel").pack(
+                        side=tk.LEFT, padx=(12, 8)
+                    )
+                    self._ir_tx_canvas = self._make_status_light(row)
             else:
                 ttk.Label(row, text=name, style="Body.TLabel").pack(side=tk.LEFT, padx=(0, 8))
                 light = self._make_status_light(row)
