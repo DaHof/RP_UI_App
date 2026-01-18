@@ -61,6 +61,10 @@ def _approx(value: int, target: int, tolerance: float = 0.3) -> bool:
     return abs(value - target) <= target * tolerance
 
 
+def _match_us(value: int, target: int, tolerance_us: int) -> bool:
+    return abs(value - target) <= tolerance_us
+
+
 def _bits_to_int(bits: List[int], lsb_first: bool = True) -> int:
     if lsb_first:
         total = 0
@@ -82,9 +86,9 @@ def _decode_nec(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 9000, 0.25) and _approx(space, 4500, 0.3)):
+    if not (_match_us(pulse, 9000, 200) and _match_us(space, 4500, 200)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32)
+    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
     if not bits or len(bits) < 32:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
@@ -99,9 +103,9 @@ def _decode_nec_ext(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 9000, 0.25) and _approx(space, 4500, 0.3)):
+    if not (_match_us(pulse, 9000, 200) and _match_us(space, 4500, 200)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32)
+    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
     if not bits or len(bits) < 32:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
@@ -114,9 +118,9 @@ def _decode_samsung(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 4500, 0.3) and _approx(space, 4500, 0.3)):
+    if not (_match_us(pulse, 4500, 200) and _match_us(space, 4500, 200)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32)
+    bits = _decode_pulse_distance(samples[2:], 550, 550, 1650, 32, 120)
     if not bits or len(bits) < 32:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
@@ -131,7 +135,7 @@ def _decode_jvc(samples: List[int]) -> Optional[DecodedIR]:
     pulse, space = samples[0], samples[1]
     if not (_approx(pulse, 8400, 0.25) and _approx(space, 4200, 0.3)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 525, 525, 1575, 16)
+    bits = _decode_pulse_distance(samples[2:], 525, 525, 1575, 16, 120)
     if not bits or len(bits) < 16:
         return None
     addr = _bits_to_int(bits[0:8])
@@ -145,18 +149,18 @@ def _decode_sony(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 2400, 0.3) and _approx(space, 600, 0.4)):
+    if not (_match_us(pulse, 2400, 200) and _match_us(space, 600, 120)):
         return None
     bits: List[int] = []
     index = 2
     while index + 1 < len(samples):
         pulse = samples[index]
         space = samples[index + 1]
-        if not _approx(space, 600, 0.5):
+        if not _match_us(space, 600, 120):
             break
-        if _approx(pulse, 600, 0.4):
+        if _match_us(pulse, 600, 120):
             bits.append(0)
-        elif _approx(pulse, 1200, 0.4):
+        elif _match_us(pulse, 1200, 120):
             bits.append(1)
         else:
             break
@@ -192,7 +196,7 @@ def _decode_rc6(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 4:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 2666, 0.3) and _approx(space, 889, 0.35)):
+    if not (_match_us(pulse, 2666, 200) and _match_us(space, 889, 120)):
         return None
     levels = _timings_to_levels(samples[2:], expected_unit=444)
     if not levels or len(levels) < 40:
@@ -219,7 +223,7 @@ def _decode_kaseikyo(samples: List[int]) -> Optional[DecodedIR]:
     pulse, space = samples[0], samples[1]
     if not (_approx(pulse, 3500, 0.3) and _approx(space, 1750, 0.3)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 432, 432, 1296, 48)
+    bits = _decode_pulse_distance(samples[2:], 432, 432, 1296, 48, 120)
     if not bits or len(bits) < 48:
         return None
     values = [_bits_to_int(bits[i : i + 8]) for i in range(0, 48, 8)]
@@ -282,9 +286,9 @@ def _decode_sanyo(samples: List[int]) -> Optional[DecodedIR]:
     if len(samples) < 2:
         return None
     pulse, space = samples[0], samples[1]
-    if not (_approx(pulse, 9000, 0.25) and _approx(space, 4500, 0.3)):
+    if not (_match_us(pulse, 9000, 200) and _match_us(space, 4500, 200)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 42)
+    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 42, 120)
     if not bits or len(bits) < 42:
         return None
     values = [_bits_to_int(bits[i : i + 8]) for i in range(0, 40, 8)]
@@ -299,7 +303,7 @@ def _decode_xmp(samples: List[int]) -> Optional[DecodedIR]:
     pulse, space = samples[0], samples[1]
     if not (_approx(pulse, 2090, 0.3) and _approx(space, 780, 0.35)):
         return None
-    bits = _decode_pulse_distance(samples[2:], 780, 390, 1170, 32)
+    bits = _decode_pulse_distance(samples[2:], 780, 390, 1170, 32, 120)
     if not bits or len(bits) < 32:
         return None
     values = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
@@ -314,17 +318,18 @@ def _decode_pulse_distance(
     zero_space_us: int,
     one_space_us: int,
     expected_bits: int,
+    tolerance_us: int,
 ) -> Optional[List[int]]:
     bits: List[int] = []
     index = 0
     while index + 1 < len(samples) and len(bits) < expected_bits:
         pulse = samples[index]
         space = samples[index + 1]
-        if not _approx(pulse, pulse_us, 0.35):
+        if not _match_us(pulse, pulse_us, tolerance_us):
             break
-        if _approx(space, zero_space_us, 0.4):
+        if _match_us(space, zero_space_us, tolerance_us):
             bits.append(0)
-        elif _approx(space, one_space_us, 0.4):
+        elif _match_us(space, one_space_us, tolerance_us):
             bits.append(1)
         else:
             break
