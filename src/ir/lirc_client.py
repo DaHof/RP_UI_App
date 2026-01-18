@@ -445,7 +445,7 @@ class LircClient:
                 for token in tokens:
                     value = int(token)
                     signed_data.append(value)
-                    if value > 20000 and seen_burst:
+                    if abs(value) > 20000 and seen_burst:
                         burst_complete = True
                         break
                     if value > 0:
