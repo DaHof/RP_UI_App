@@ -544,13 +544,13 @@ class HomeScreen(BaseScreen):
         top_row = ttk.Frame(self._content, style="App.TFrame")
         top_row.pack(fill=tk.X, pady=(6, 8))
 
-        status_card = ttk.Frame(top_row, style="Card.TFrame")
-        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 16))
-        ttk.Label(status_card, text="System Check", style="Status.TLabel").pack(
+        self._status_card = ttk.Frame(top_row, style="Card.TFrame")
+        ttk.Label(self._status_card, text="System Check", style="Status.TLabel").pack(
             pady=(8, 4), anchor="w", padx=12
         )
-        self._status_host = ttk.Frame(status_card, style="Card.TFrame")
+        self._status_host = ttk.Frame(self._status_card, style="Card.TFrame")
         self._status_host.pack(fill=tk.X, expand=True, padx=12, pady=(0, 12), anchor="w")
+        self._sync_status_card_visibility()
         self._build_status_rows()
 
         if self._app._gif_frames:
@@ -585,7 +585,23 @@ class HomeScreen(BaseScreen):
     def refresh(self) -> None:
         self._build_status_rows()
 
+    def _sync_status_card_visibility(self) -> bool:
+        if self._app.feature_enabled("IR"):
+            if not self._status_card.winfo_manager():
+                self._status_card.pack(
+                    side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 16)
+                )
+            return True
+        if self._status_card.winfo_manager():
+            self._status_card.pack_forget()
+        return False
+
     def _build_status_rows(self) -> None:
+        if not self._sync_status_card_visibility():
+            for child in self._status_host.winfo_children():
+                child.destroy()
+            self._status_rows.clear()
+            return
         for child in self._status_host.winfo_children():
             child.destroy()
         self._status_rows.clear()
@@ -604,14 +620,6 @@ class HomeScreen(BaseScreen):
                 ttk.Label(row, text=step.name, style="Body.TLabel").pack(
                     side=tk.LEFT, padx=(8, 0)
                 )
-                if step.details:
-                    ttk.Label(
-                        self._status_host,
-                        text=step.details,
-                        style="Muted.TLabel",
-                        wraplength=420,
-                        justify=tk.LEFT,
-                    ).pack(anchor="w", padx=(20, 0), pady=(0, 4))
 
         enabled_modules = [name for name, enabled in self._app._feature_flags.items() if enabled]
         if not enabled_modules:
