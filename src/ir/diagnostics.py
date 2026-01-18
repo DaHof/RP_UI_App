@@ -315,7 +315,9 @@ class IRDiagnosticService:
     def _has_rx_activity(self, output: str) -> bool:
         return bool(
             re.search(
-                r"\b(pulse|space|code:|scancode)\b", output, re.IGNORECASE
+                r"\b(pulse|space|code:|scancode|partial read|decoded)\b",
+                output,
+                re.IGNORECASE,
             )
         )
 
