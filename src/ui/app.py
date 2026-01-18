@@ -1823,9 +1823,17 @@ class IRScreen(BaseScreen):
     def _send_universal_signal_background(
         self, signal: "FlipperIRSignal", label: str
     ) -> None:
-        success, message = self._client.send_parsed(
-            signal.protocol or "", signal.address, signal.command
-        )
+        if signal.signal_type == "parsed":
+            success, message = self._client.send_parsed(
+                signal.protocol or "", signal.address, signal.command
+            )
+        elif signal.signal_type == "raw":
+            success, message = self._client.send_raw(
+                signal.frequency, signal.duty_cycle, signal.data
+            )
+        else:
+            success = False
+            message = f"Unsupported signal type: {signal.signal_type}."
 
         def update_status() -> None:
             if success:
@@ -1878,6 +1886,7 @@ class IRScreen(BaseScreen):
             "keystone_dn": "keystone_dn",
         }
         return mapping.get(normalized, normalized)
+
     def _load_universal_signals(self, device: str) -> list["FlipperIRLibrarySignal"]:
         file_map = {
             "TV": "tv.ir",
