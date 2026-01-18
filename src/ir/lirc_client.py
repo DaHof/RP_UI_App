@@ -40,6 +40,12 @@ class LircClient:
         "sirc20": "sony20",
     }
 
+    def __init__(self) -> None:
+        self._rx_device: Optional[str] = None
+
+    def set_rx_device(self, device: Optional[str]) -> None:
+        self._rx_device = device.strip() if device else None
+
     def list_remotes(self) -> Iterable[IRRemote]:
         raise NotImplementedError("LIRC integration not wired yet.")
 
@@ -285,6 +291,14 @@ class LircClient:
         return devices[0] if devices else None
 
     def _select_rx_device(self) -> Optional[str]:
+        if self._rx_device and Path(self._rx_device).exists():
+            return self._rx_device
+        env_device = os.environ.get("IR_RX_DEVICE")
+        if env_device and Path(env_device).exists():
+            return env_device
+        preferred = "/dev/lirc1"
+        if Path(preferred).exists():
+            return preferred
         device = self._detect_rx_device()
         if device:
             return device

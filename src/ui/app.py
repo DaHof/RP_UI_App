@@ -48,6 +48,7 @@ class App(tk.Tk):
             logger=lambda message: self.log_feature("IR", message)
         )
         self._ir_boot_diagnostic: Optional[DiagnosticResult] = None
+        self._ir_settings_path = Path(__file__).resolve().parents[2] / "data" / "ir_settings.json"
         self._load_main_gif()
 
         layout = ttk.Frame(self, style="App.TFrame")
@@ -526,6 +527,31 @@ class App(tk.Tk):
         self._refresh_ir_detection()
         self.refresh_home()
 
+    def ir_rx_device(self) -> str:
+        payload = self._load_ir_settings()
+        return str(payload.get("rx_device", "/dev/lirc1"))
+
+    def set_ir_rx_device(self, device: str) -> None:
+        payload = self._load_ir_settings()
+        payload["rx_device"] = device
+        self._save_ir_settings(payload)
+        screen = self._screens.get("IR")
+        if screen and hasattr(screen, "set_rx_device"):
+            screen.set_rx_device(device)
+
+    def _load_ir_settings(self) -> dict[str, object]:
+        if not self._ir_settings_path.exists():
+            return {}
+        try:
+            return json.loads(self._ir_settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+
+    def _save_ir_settings(self, payload: dict[str, object]) -> None:
+        self._ir_settings_path.write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
 
 class BaseScreen(ttk.Frame):
     def __init__(self, master: tk.Misc, app: App) -> None:
@@ -998,6 +1024,7 @@ class IRScreen(BaseScreen):
         self._capture_stop = threading.Event()
         self._ir_test_status = tk.StringVar(value="Run the IR test to verify devices.")
         self._client = LircClient()
+        self._client.set_rx_device(self._app.ir_rx_device())
 
         self._data_dir = Path(__file__).resolve().parents[2] / "data"
         self._saved_dir = self._data_dir / "ir" / "saved remotes"
@@ -2033,16 +2060,18 @@ class IRScreen(BaseScreen):
         return float(payload.get("universal_delay", 0.5))
 
     def _store_universal_delay(self, value: float) -> None:
-        payload = {"universal_delay": value}
-        self._ir_settings_path.write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
-        )
+        payload = self._app._load_ir_settings()
+        payload["universal_delay"] = value
+        self._app._save_ir_settings(payload)
 
     def _open_ir_pin_settings(self) -> None:
         self._app.show_section("System")
         system_screen = self._app._screens.get("System")
         if system_screen and hasattr(system_screen, "show_pins_tab"):
             system_screen.show_pins_tab()
+
+    def set_rx_device(self, device: str) -> None:
+        self._client.set_rx_device(device)
 
 
 class WiFiScreen(BaseScreen):
@@ -2434,6 +2463,16 @@ class SystemScreen(BaseScreen):
         self._ir_rx_entry.grid(row=0, column=3, padx=4, sticky="ew")
         pin_row.columnconfigure(1, weight=1)
         pin_row.columnconfigure(3, weight=1)
+
+        device_row = ttk.Frame(ir_frame, style="Card.TFrame")
+        device_row.pack(fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Label(device_row, text="RX Device:", style="Body.TLabel").grid(
+            row=0, column=0, padx=4
+        )
+        self._ir_rx_device_entry = ttk.Entry(device_row, style="App.TEntry")
+        self._ir_rx_device_entry.insert(0, self._app.ir_rx_device())
+        self._ir_rx_device_entry.grid(row=0, column=1, padx=4, sticky="ew")
+        device_row.columnconfigure(1, weight=1)
         ttk.Button(
             ir_frame,
             text="Save IR Pins",
@@ -2510,6 +2549,8 @@ class SystemScreen(BaseScreen):
         tx_pin = self._ir_tx_entry.get().strip() or self._app.ir_tx_pin()
         rx_pin = self._ir_rx_entry.get().strip() or self._app.ir_rx_pin()
         self._app.set_ir_pins(tx_pin, rx_pin)
+        rx_device = self._ir_rx_device_entry.get().strip() or self._app.ir_rx_device()
+        self._app.set_ir_rx_device(rx_device)
 
     def show_pins_tab(self) -> None:
         if hasattr(self, "_tabs"):
