@@ -991,9 +991,9 @@ class IRScreen(BaseScreen):
         self._serialize_signals = serialize_signals
 
         self._status = tk.StringVar(value="")
-        self._captures: list[dict[str, str]] = []
+        self._captures: list[dict[str, object]] = []
         self._capture_detail = tk.StringVar(value="")
-        self._last_capture: Optional[dict[str, str]] = None
+        self._last_capture: Optional[dict[str, object]] = None
         self._capture_thread: Optional[threading.Thread] = None
         self._capture_stop = threading.Event()
         self._ir_test_status = tk.StringVar(value="Run the IR test to verify devices.")
@@ -1378,27 +1378,30 @@ class IRScreen(BaseScreen):
         self._capture_stop.set()
 
     def _capture_loop(self) -> None:
-        for event in self._client.iter_keytable_events(self._capture_stop):
-            self._app.after(0, lambda payload=event: self._add_capture(**payload))
+        while not self._capture_stop.is_set():
+            capture = self._client.capture_signal(self._capture_stop)
+            if not capture:
+                return
+            self._app.after(0, lambda payload=capture: self._add_capture(payload))
+            return
 
-    def _add_capture(self, name: str, protocol: str, data: str, source: str) -> None:
-        address, command = self._client.decode_scancode(protocol, data)
-        capture = {
-            "name": name,
-            "protocol": protocol.upper(),
-            "address": address,
-            "command": command,
-            "source": source,
-        }
+    def _add_capture(self, capture: dict[str, object]) -> None:
         self._captures.append(capture)
         self._last_capture = capture
         self._learn_instruction.set("Signal captured. Review details below.")
         if hasattr(self, "_learn_button_row"):
             self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
         if hasattr(self, "_learn_capture_list"):
-            self._learn_capture_list.insert(
-                tk.END, f"{name} | {capture['protocol']} | {command}"
-            )
+            name = str(capture.get("name") or "Unknown")
+            signal_type = str(capture.get("signal_type") or "parsed")
+            protocol = str(capture.get("protocol") or "Unknown")
+            command = capture.get("command")
+            if signal_type == "raw":
+                data = capture.get("data") or []
+                detail = f"{name} | RAW | {len(data)} samples"
+            else:
+                detail = f"{name} | {protocol} | {command}"
+            self._learn_capture_list.insert(tk.END, detail)
             self._learn_capture_list.selection_clear(0, tk.END)
             self._learn_capture_list.selection_set(tk.END)
             self._learn_capture_list.event_generate("<<ListboxSelect>>")
@@ -1409,14 +1412,25 @@ class IRScreen(BaseScreen):
             return
         index = listbox.curselection()[0]
         capture = self._captures[index]
-        detail = (
-            f"Protocol: {capture['protocol']} | "
-            f"Address: {capture['address']} | "
-            f"Command: {capture['command']}"
-        )
+        signal_type = str(capture.get("signal_type") or "parsed")
+        if signal_type == "raw":
+            data = capture.get("data") or []
+            frequency = capture.get("frequency")
+            duty_cycle = capture.get("duty_cycle")
+            detail = f"Raw signal | Samples: {len(data)}"
+            if frequency:
+                detail += f" | Carrier: {frequency} Hz"
+            if duty_cycle is not None:
+                detail += f" | Duty: {duty_cycle:.2f}"
+        else:
+            detail = (
+                f"Protocol: {capture.get('protocol')} | "
+                f"Address: {capture.get('address')} | "
+                f"Command: {capture.get('command')}"
+            )
         self._capture_detail.set(detail)
 
-    def _selected_capture(self) -> Optional[dict[str, str]]:
+    def _selected_capture(self) -> Optional[dict[str, object]]:
         if hasattr(self, "_learn_capture_list") and self._learn_capture_list.curselection():
             index = self._learn_capture_list.curselection()[0]
             return self._captures[index]
@@ -1427,8 +1441,20 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
+        signal_type = str(capture.get("signal_type") or "parsed")
+        if signal_type == "raw":
+            success, message = self._client.send_raw(
+                capture.get("frequency"),
+                capture.get("duty_cycle"),
+                capture.get("data"),
+            )
+            if not success:
+                messagebox.showerror("Learn Remote", message)
+            else:
+                self._set_status("Sent raw signal.")
+            return
         self._send_parsed_signal(
-            capture["protocol"],
+            str(capture.get("protocol") or ""),
             capture.get("address"),
             capture.get("command"),
             "Learn Remote",
@@ -1446,13 +1472,23 @@ class IRScreen(BaseScreen):
         if not button_name:
             return
         signals = self._ir_library.load_remote(device) or []
-        signal = self._flipper_signal(
-            name=button_name,
-            signal_type="parsed",
-            protocol=capture["protocol"],
-            address=capture["address"],
-            command=capture["command"],
-        )
+        signal_type = str(capture.get("signal_type") or "parsed")
+        if signal_type == "raw":
+            signal = self._flipper_signal(
+                name=button_name,
+                signal_type="raw",
+                frequency=capture.get("frequency"),
+                duty_cycle=capture.get("duty_cycle"),
+                data=capture.get("data"),
+            )
+        else:
+            signal = self._flipper_signal(
+                name=button_name,
+                signal_type="parsed",
+                protocol=capture.get("protocol"),
+                address=capture.get("address"),
+                command=capture.get("command"),
+            )
         signals.append(signal)
         self._ir_library.save_remote_signals(device, signals)
         self._refresh_saved_remotes()

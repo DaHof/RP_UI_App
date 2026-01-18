@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import threading
 import tempfile
+import time
 from typing import Iterable, Iterator, List, Optional, Tuple
 
 
@@ -137,6 +138,65 @@ class LircClient:
     def start_capture(self) -> None:
         raise NotImplementedError("LIRC integration not wired yet.")
 
+    def capture_signal(
+        self,
+        stop_event: threading.Event,
+        timeout_s: float = 12.0,
+    ) -> Optional[dict[str, object]]:
+        capture_stop = threading.Event()
+        raw_result: dict[str, object] = {}
+        raw_ready = threading.Event()
+
+        def raw_worker() -> None:
+            raw = self._capture_raw_signal(stop_event, capture_stop, timeout_s)
+            if raw:
+                raw_result.update(raw)
+            raw_ready.set()
+
+        raw_thread: Optional[threading.Thread] = None
+        if shutil.which("ir-ctl"):
+            raw_thread = threading.Thread(target=raw_worker, daemon=True)
+            raw_thread.start()
+
+        parsed = self._capture_keytable_event(stop_event, capture_stop, timeout_s)
+        if parsed:
+            capture_stop.set()
+            if raw_thread:
+                raw_thread.join(timeout=0.5)
+            protocol = str(parsed.get("protocol") or "unknown")
+            scancode = str(parsed.get("data") or "")
+            address, command = self.decode_scancode(protocol, scancode)
+            return {
+                "name": str(parsed.get("name") or "Unknown"),
+                "signal_type": "parsed",
+                "protocol": protocol.upper(),
+                "address": address,
+                "command": command,
+                "scancode": scancode,
+                "source": parsed.get("source") or "ir-keytable",
+                "frequency": None,
+                "duty_cycle": None,
+                "data": None,
+            }
+
+        capture_stop.set()
+        if raw_thread:
+            raw_thread.join(timeout=0.5)
+        if raw_result:
+            return {
+                "name": "RAW",
+                "signal_type": "raw",
+                "protocol": "RAW",
+                "address": None,
+                "command": None,
+                "scancode": None,
+                "source": raw_result.get("source") or "ir-ctl",
+                "frequency": raw_result.get("frequency"),
+                "duty_cycle": raw_result.get("duty_cycle"),
+                "data": raw_result.get("data"),
+            }
+        return None
+
     def iter_keytable_events(
         self, stop_event: threading.Event
     ) -> Iterator[dict[str, str]]:
@@ -186,6 +246,108 @@ class LircClient:
         if writable:
             return writable[0]
         return devices[0] if devices else None
+
+    def _select_rx_device(self) -> Optional[str]:
+        devices = sorted(str(path) for path in Path("/dev").glob("lirc*"))
+        readable = [device for device in devices if os.access(device, os.R_OK)]
+        if readable:
+            return readable[0]
+        return devices[0] if devices else None
+
+    def _capture_keytable_event(
+        self,
+        stop_event: threading.Event,
+        capture_stop: threading.Event,
+        timeout_s: float,
+    ) -> Optional[dict[str, str]]:
+        if not shutil.which("ir-keytable"):
+            return None
+        process = subprocess.Popen(
+            ["ir-keytable", "-t"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if process.stdout is None:
+            return None
+        deadline = time.monotonic() + timeout_s
+        for line in process.stdout:
+            if stop_event.is_set() or capture_stop.is_set():
+                break
+            if time.monotonic() > deadline:
+                break
+            event = self._parse_keytable_line(line)
+            if event:
+                process.terminate()
+                return event
+        process.terminate()
+        return None
+
+    def _capture_raw_signal(
+        self,
+        stop_event: threading.Event,
+        capture_stop: threading.Event,
+        timeout_s: float,
+    ) -> Optional[dict[str, object]]:
+        device = self._select_rx_device()
+        if not device:
+            return None
+        process = subprocess.Popen(
+            ["ir-ctl", "-d", device, "-r"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if process.stdout is None:
+            return None
+        data: List[int] = []
+        frequency: Optional[int] = None
+        duty_cycle: Optional[float] = None
+        deadline = time.monotonic() + timeout_s
+        for line in process.stdout:
+            if stop_event.is_set() or capture_stop.is_set():
+                break
+            if time.monotonic() > deadline:
+                break
+            stripped = line.strip()
+            if not stripped:
+                if data:
+                    break
+                continue
+            lower = stripped.lower()
+            if lower.startswith("carrier"):
+                match = re.search(r"(\d+)", stripped)
+                if match:
+                    frequency = int(match.group(1))
+                continue
+            if lower.startswith("duty"):
+                match = re.search(r"([0-9]*\.?[0-9]+)", stripped)
+                if match:
+                    try:
+                        duty_cycle = float(match.group(1))
+                    except ValueError:
+                        duty_cycle = None
+                continue
+            if "timeout" in lower:
+                if data:
+                    break
+                continue
+            match = re.search(r"(pulse|space)\s+(\d+)", lower)
+            if match:
+                data.append(int(match.group(2)))
+                continue
+            value_match = re.search(r"(\d+)", stripped)
+            if value_match:
+                data.append(int(value_match.group(1)))
+        process.terminate()
+        if not data:
+            return None
+        return {
+            "frequency": frequency,
+            "duty_cycle": duty_cycle,
+            "data": data,
+            "source": "ir-ctl",
+        }
 
     def _build_scancode(self, protocol: str, address: str, command: str) -> Optional[str]:
         addr_bytes = self._compact_bytes(self._parse_hex_bytes(address))
