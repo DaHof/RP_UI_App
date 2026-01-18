@@ -178,9 +178,21 @@ class App(tk.Tk):
         self._refresh_ir_detection()
 
     def _refresh_ir_detection(self) -> None:
-        self._ir_detected["rx"] = bool(self._ir_rx_pin.get().strip())
-        self._ir_detected["tx"] = bool(self._ir_tx_pin.get().strip())
+        if self._ir_boot_diagnostic:
+            self._apply_ir_diagnostic_status(self._ir_boot_diagnostic)
+        else:
+            self._ir_detected["rx"] = bool(self._ir_rx_pin.get().strip())
+            self._ir_detected["tx"] = bool(self._ir_tx_pin.get().strip())
         self._update_ir_indicators()
+
+    def _apply_ir_diagnostic_status(self, result: DiagnosticResult) -> None:
+        step_status = {step.name: step.status for step in result.steps}
+        rx_ready = step_status.get("Presence Check") == "PASS" and step_status.get(
+            "Driver/Binding Check"
+        ) == "PASS"
+        tx_ready = step_status.get("TX Send Test") == "PASS"
+        self._ir_detected["rx"] = rx_ready
+        self._ir_detected["tx"] = tx_ready
 
     def _update_ir_indicators(self) -> None:
         if not hasattr(self, "_ir_rx_canvas"):
@@ -336,7 +348,9 @@ class App(tk.Tk):
     def _run_ir_boot_diagnostic(self) -> None:
         result = self._ir_diagnostics.run_boot_diagnostic()
         self._ir_boot_diagnostic = result
+        self._apply_ir_diagnostic_status(result)
         self.log_feature("IR", f"Boot diagnostic complete: {result.status}")
+        self.log_feature("IR", f"Boot diagnostic summary: {result.summary_line()}")
         for step in result.steps:
             self.log_feature("IR", f"Boot {step.name}: {step.status} {step.details}")
         self.after(0, self._notify_boot_diagnostic_ready)
@@ -576,6 +590,22 @@ class HomeScreen(BaseScreen):
         self._status_rows.clear()
         self._ir_rx_canvas = None
         self._ir_tx_canvas = None
+
+        boot_result = self._app.ir_boot_diagnostic()
+        if boot_result:
+            summary = f"Boot diagnostic: {boot_result.status}"
+            ttk.Label(
+                self._status_host,
+                text=summary,
+                style="Muted.TLabel",
+            ).pack(anchor="w", pady=(0, 6))
+            ttk.Label(
+                self._status_host,
+                text=boot_result.summary_line(),
+                style="Muted.TLabel",
+                wraplength=420,
+                justify=tk.LEFT,
+            ).pack(anchor="w", pady=(0, 10))
 
         enabled_modules = [name for name, enabled in self._app._feature_flags.items() if enabled]
         if not enabled_modules:
@@ -2350,7 +2380,11 @@ class SystemScreen(BaseScreen):
         self._ir_diag_status.set(f"{step.name}: {step.status}")
 
     def _finish_ir_diag(self, result: DiagnosticResult) -> None:
-        self._ir_diag_status.set(f"Overall status: {result.status}")
+        self._app._apply_ir_diagnostic_status(result)
+        self._app.refresh_home()
+        self._ir_diag_status.set(
+            f"Overall status: {result.status} | {result.summary_line()}"
+        )
         fixes = result.suggested_fixes
         if fixes:
             self._ir_diag_fixes.set("Suggested fixes: " + " | ".join(fixes))
