@@ -1433,12 +1433,13 @@ class IRScreen(BaseScreen):
         self._capture_detail.set(detail)
 
     def _log_raw_capture(self, capture: dict[str, object]) -> None:
+        if not self._app._log_enabled.get():
+            return
         raw_data = capture.get("raw_data")
         if not raw_data:
             return
-        log_dir = Path(__file__).resolve().parents[2] / "data" / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / "ir_raw_captures.log"
+        self._app._log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self._app._log_dir / "ir_raw_captures.log"
         protocol = str(capture.get("protocol") or "Unknown")
         address = str(capture.get("address") or "")
         command = str(capture.get("command") or "")
