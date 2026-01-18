@@ -1265,11 +1265,15 @@ class IRScreen(BaseScreen):
             self._learn_button_row, text="Send", style="Small.TButton", command=self._send_learned_signal
         )
         self._learn_send_btn.grid(row=0, column=1, padx=4, sticky="ew")
+        self._learn_send_raw_btn = ttk.Button(
+            self._learn_button_row, text="Send Raw", style="Small.TButton", command=self._send_raw_learned_signal
+        )
+        self._learn_send_raw_btn.grid(row=0, column=2, padx=4, sticky="ew")
         self._learn_save_btn = ttk.Button(
             self._learn_button_row, text="Save", style="Small.TButton", command=self._save_learned_signal
         )
-        self._learn_save_btn.grid(row=0, column=2, padx=4, sticky="ew")
-        for idx in range(3):
+        self._learn_save_btn.grid(row=0, column=3, padx=4, sticky="ew")
+        for idx in range(4):
             self._learn_button_row.columnconfigure(idx, weight=1)
         return frame
 
@@ -1559,6 +1563,28 @@ class IRScreen(BaseScreen):
             capture.get("command"),
             "Learn Remote",
         )
+
+    def _send_raw_learned_signal(self) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Learn Remote", "No captured signal to send.")
+            return
+        raw_data = capture.get("raw_data") or capture.get("data")
+        frequency = capture.get("raw_frequency") or capture.get("frequency")
+        duty_cycle = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
+        if not raw_data:
+            messagebox.showinfo("Learn Remote", "No raw signal data available.")
+            return
+        self._app.log_feature("IR", "Learn send raw signal")
+        success, message = self._client.send_raw(
+            frequency,
+            duty_cycle,
+            raw_data,
+        )
+        if not success:
+            messagebox.showerror("Learn Remote", message)
+        else:
+            self._set_status("Sent raw signal.")
 
     def _save_learned_signal(self) -> None:
         capture = self._selected_capture()
