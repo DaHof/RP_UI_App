@@ -1784,7 +1784,7 @@ class IRScreen(BaseScreen):
                     label, current, count, total
                 ),
             )
-            self._send_universal_signal(signal.signal)
+            self._send_universal_signal_background(signal.signal, label)
             time.sleep(self._universal_delay)
         self._app.after(0, self._finish_universal_scan)
 
@@ -1814,14 +1814,20 @@ class IRScreen(BaseScreen):
         self._universal_progress_bar.configure(maximum=total)
         self._universal_progress_value.set(float(count))
 
-    def _send_universal_signal(self, signal: "FlipperIRSignal") -> None:
-        self._send_parsed_signal(
-            signal.protocol,
-            signal.address,
-            signal.command,
-            "Universal Remotes",
-            signal.name,
+    def _send_universal_signal_background(
+        self, signal: "FlipperIRSignal", label: str
+    ) -> None:
+        success, message = self._client.send_parsed(
+            signal.protocol or "", signal.address, signal.command
         )
+
+        def update_status() -> None:
+            if success:
+                self._set_status(f"Sent {label}.")
+                return
+            self._universal_notice.set(message)
+            self._set_status(message)
+        self._app.after(0, update_status)
 
     def _send_parsed_signal(
         self,
