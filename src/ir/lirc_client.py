@@ -360,7 +360,7 @@ class LircClient:
         device = self._select_rx_device()
         if not device:
             return None
-        command = ["ir-ctl", "-d", device, "-r"]
+        command = ["ir-ctl", "-r", "-d", device]
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
