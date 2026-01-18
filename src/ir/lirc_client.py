@@ -64,6 +64,13 @@ class LircClient:
         )
         if result.returncode != 0:
             message = result.stderr.strip() or result.stdout.strip()
+            if message:
+                lowered = message.lower()
+                if "protocol" in lowered and "not found" in lowered:
+                    message = (
+                        f"{message} Try `ir-keytable -p` (no args) and enable a"
+                        " supported protocol with `ir-keytable -p`."
+                    )
             return False, message or "ir-ctl failed to send."
         return True, "Sent."
 
@@ -136,9 +143,15 @@ class LircClient:
     def _parse_keytable_line(self, line: str) -> dict[str, str] | None:
         if "scancode" not in line:
             return None
-        protocol_match = re.search(r"protocol\s+(\w+)", line)
-        scancode_match = re.search(r"scancode\s+(\w+)", line)
-        key_match = re.search(r"key\s+(\w+)", line)
+        protocol_match = re.search(r"protocol\s+([\w-]+)", line, re.IGNORECASE)
+        scancode_match = re.search(
+            r"scancode\s*(?:=|:)?\s*(0x[0-9a-fA-F]+)", line
+        )
+        if not scancode_match:
+            scancode_match = re.search(
+                r"scancode\s*(?:=|:)?\s*([0-9a-fA-F]+)", line
+            )
+        key_match = re.search(r"key\s+([\w-]+)", line, re.IGNORECASE)
         protocol = protocol_match.group(1) if protocol_match else "unknown"
         scancode = scancode_match.group(1) if scancode_match else "unknown"
         key = key_match.group(1) if key_match else "unknown"

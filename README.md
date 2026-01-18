@@ -91,6 +91,12 @@ sudo apt-get update
 sudo apt-get install -y v4l-utils ir-keytable
 ```
 
+If `ir-keytable -p all` reports protocol errors (for example `protocol 'kaseikyo' 'sony' 'samsung32' 'rc6' not found`),
+the IR driver for your receiver only supports a subset of protocols. Use `ir-keytable -p` with an explicit list of
+supported protocols from `ir-keytable -p` (no args), or update your kernel/v4l-utils to gain wider protocol support.
+Transmitting with `ir-ctl` does not require enabling receive protocols via `ir-keytable -p` if you only need to send
+signals.
+
 ### IR wiring (V1221/V1222)
 
 Default wiring targets the following Raspberry Pi pins (configurable in the UI Settings screen):
