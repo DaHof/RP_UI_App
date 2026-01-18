@@ -183,6 +183,8 @@ class LircClient:
                 "data": None,
                 "raw_attempted": raw_attempted,
                 "raw_device": raw_result.get("device"),
+                "raw_command": raw_result.get("command"),
+                "keytable_command": parsed.get("command"),
             }
             if raw_result:
                 result.update(
@@ -228,6 +230,7 @@ class LircClient:
                 "frequency": raw_result.get("frequency"),
                 "duty_cycle": raw_result.get("duty_cycle"),
                 "data": raw_result.get("data"),
+                "raw_command": raw_result.get("command"),
             }
         return None
 
@@ -311,8 +314,9 @@ class LircClient:
     ) -> Optional[dict[str, str]]:
         if not shutil.which("ir-keytable"):
             return None
+        command = ["ir-keytable", "-t"]
         process = subprocess.Popen(
-            ["ir-keytable", "-t"],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -327,6 +331,7 @@ class LircClient:
                 break
             event = self._parse_keytable_line(line)
             if event:
+                event["command"] = " ".join(command)
                 process.terminate()
                 return event
         process.terminate()
@@ -341,8 +346,9 @@ class LircClient:
         device = self._select_rx_device()
         if not device:
             return None
+        command = ["ir-ctl", "-d", device, "-r"]
         process = subprocess.Popen(
-            ["ir-ctl", "-d", device, "-r"],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -408,6 +414,7 @@ class LircClient:
             "data": data,
             "signed_data": signed_data,
             "raw_lines": raw_lines,
+            "command": " ".join(command),
             "source": "ir-ctl",
         }
 
