@@ -1571,21 +1571,23 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
-        raw_data = capture.get("data")
+        raw_full = capture.get("raw_data") or capture.get("data")
         raw_burst = capture.get("raw_burst")
-        if raw_burst:
-            raw_data = raw_burst
+        raw_data = raw_burst or raw_full
         frequency = capture.get("raw_frequency") or capture.get("frequency")
         duty_cycle = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
         if not raw_data:
             messagebox.showinfo("Learn Remote", "No raw signal data available.")
             return
         self._app.log_feature("IR", "Learn send raw signal")
-        success, message = self._client.send_raw(
-            frequency,
-            duty_cycle,
-            raw_data,
-        )
+        success, message = self._client.send_raw(frequency, duty_cycle, raw_data)
+        if not success and raw_full and raw_full is not raw_data:
+            self._app.log_feature("IR", "Learn raw fallback to full capture")
+            success, message = self._client.send_raw(
+                frequency,
+                duty_cycle,
+                raw_full,
+            )
         if not success:
             messagebox.showerror("Learn Remote", message)
         else:
