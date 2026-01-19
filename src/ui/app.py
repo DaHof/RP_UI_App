@@ -1571,9 +1571,9 @@ class IRScreen(BaseScreen):
         if not capture:
             messagebox.showinfo("Learn Remote", "No captured signal to send.")
             return
-        raw_data = capture.get("raw_data") or capture.get("data")
+        raw_data = capture.get("data")
         raw_burst = capture.get("raw_burst")
-        if raw_burst and raw_data and len(raw_burst) > len(raw_data):
+        if raw_burst:
             raw_data = raw_burst
         frequency = capture.get("raw_frequency") or capture.get("frequency")
         duty_cycle = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
@@ -1605,7 +1605,8 @@ class IRScreen(BaseScreen):
             return
         signals = self._ir_library.load_remote(device) or []
         signal_type = str(capture.get("signal_type") or "parsed")
-        raw_data = capture.get("raw_data") or capture.get("data")
+        raw_burst = capture.get("raw_burst") or capture.get("data")
+        raw_full = capture.get("raw_data")
         raw_frequency = capture.get("raw_frequency") or capture.get("frequency")
         raw_duty = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
         if signal_type == "raw":
@@ -1614,7 +1615,7 @@ class IRScreen(BaseScreen):
                 signal_type="raw",
                 frequency=raw_frequency,
                 duty_cycle=raw_duty,
-                data=raw_data,
+                data=raw_burst,
             )
         else:
             signal = self._flipper_signal(
@@ -1625,13 +1626,13 @@ class IRScreen(BaseScreen):
                 command=capture.get("command"),
             )
         signals.append(signal)
-        if signal_type != "raw" and raw_data:
+        if signal_type != "raw" and raw_burst:
             raw_variant = self._flipper_signal(
                 name=f"{button_name} (raw)",
                 signal_type="raw",
                 frequency=raw_frequency,
                 duty_cycle=raw_duty,
-                data=raw_data,
+                data=raw_burst,
             )
             signals.append(raw_variant)
         self._ir_library.save_remote_signals(device, signals)
