@@ -1605,13 +1605,16 @@ class IRScreen(BaseScreen):
             return
         signals = self._ir_library.load_remote(device) or []
         signal_type = str(capture.get("signal_type") or "parsed")
+        raw_data = capture.get("raw_data") or capture.get("data")
+        raw_frequency = capture.get("raw_frequency") or capture.get("frequency")
+        raw_duty = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
         if signal_type == "raw":
             signal = self._flipper_signal(
                 name=button_name,
                 signal_type="raw",
-                frequency=capture.get("frequency"),
-                duty_cycle=capture.get("duty_cycle"),
-                data=capture.get("data"),
+                frequency=raw_frequency,
+                duty_cycle=raw_duty,
+                data=raw_data,
             )
         else:
             signal = self._flipper_signal(
@@ -1622,6 +1625,15 @@ class IRScreen(BaseScreen):
                 command=capture.get("command"),
             )
         signals.append(signal)
+        if signal_type != "raw" and raw_data:
+            raw_variant = self._flipper_signal(
+                name=f"{button_name} (raw)",
+                signal_type="raw",
+                frequency=raw_frequency,
+                duty_cycle=raw_duty,
+                data=raw_data,
+            )
+            signals.append(raw_variant)
         self._ir_library.save_remote_signals(device, signals)
         self._refresh_saved_remotes()
         self._select_saved_remote(device)
@@ -1700,9 +1712,13 @@ class IRScreen(BaseScreen):
             return
         index = self._saved_button_list.index(selection[0])
         signal = self._selected_saved_remote_signals[index]
-        self._saved_button_detail.set(
-            f"{signal.name} | {signal.protocol} | {signal.address} | {signal.command}"
-        )
+        if signal.signal_type == "raw":
+            count = len(signal.data) if signal.data else 0
+            self._saved_button_detail.set(f"{signal.name} | RAW | {count} samples")
+        else:
+            self._saved_button_detail.set(
+                f"{signal.name} | {signal.protocol} | {signal.address} | {signal.command}"
+            )
 
     def _render_saved_button_grid(self) -> None:
         for child in self._saved_button_grid.winfo_children():
