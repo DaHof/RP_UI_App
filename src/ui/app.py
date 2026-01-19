@@ -1574,8 +1574,11 @@ class IRScreen(BaseScreen):
         raw_full = capture.get("raw_data") or capture.get("data")
         raw_burst = capture.get("raw_burst")
         raw_data = raw_burst or raw_full
+        protocol = str(capture.get("protocol") or "")
         frequency = capture.get("raw_frequency") or capture.get("frequency")
         duty_cycle = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
+        if not frequency or duty_cycle is None:
+            frequency, duty_cycle = self._default_carrier(protocol)
         if not raw_data:
             messagebox.showinfo("Learn Remote", "No raw signal data available.")
             return
@@ -1611,6 +1614,8 @@ class IRScreen(BaseScreen):
         raw_full = capture.get("raw_data")
         raw_frequency = capture.get("raw_frequency") or capture.get("frequency")
         raw_duty = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
+        if not raw_frequency or raw_duty is None:
+            raw_frequency, raw_duty = self._default_carrier(str(capture.get("protocol") or ""))
         if signal_type == "raw":
             signal = self._flipper_signal(
                 name=button_name,
@@ -1757,8 +1762,12 @@ class IRScreen(BaseScreen):
                     "Saved Remotes", "Missing raw signal data to send."
                 )
                 return
+            frequency = signal.frequency
+            duty_cycle = signal.duty_cycle
+            if not frequency or duty_cycle is None:
+                frequency, duty_cycle = self._default_carrier("")
             success, message = self._client.send_raw(
-                signal.frequency, signal.duty_cycle, signal.data
+                frequency, duty_cycle, signal.data
             )
             if not success:
                 messagebox.showerror("Saved Remotes", message)
@@ -1783,6 +1792,14 @@ class IRScreen(BaseScreen):
 
     def _on_saved_group_change(self, _event: tk.Event) -> None:
         self._refresh_saved_remotes()
+
+    def _default_carrier(self, protocol: str) -> tuple[int, float]:
+        key = protocol.strip().upper()
+        if key in {"SIRC", "SIRC15", "SIRC20"}:
+            return 40000, 0.33
+        if key in {"RC5", "RC6"}:
+            return 36000, 0.33
+        return 38000, 0.33
     def _open_saved_editor(self) -> None:
         selection = self._saved_remote_list.selection()
         if not selection:
