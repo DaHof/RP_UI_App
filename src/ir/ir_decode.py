@@ -13,6 +13,21 @@ class DecodedIR:
     bits: int
 
 
+@dataclass(frozen=True)
+class PdwmSpec:
+    name: str
+    preamble_mark: int
+    preamble_space: int
+    bit1_mark: int
+    bit1_space: int
+    bit0_mark: int
+    bit0_space: int
+    preamble_tolerance: int
+    bit_tolerance: int
+    min_split_time: int
+    databit_len: List[int]
+
+
 def decode_raw_timings(samples: Iterable[int]) -> Optional[DecodedIR]:
     timings = _normalize_timings(list(samples))
     if len(timings) < 6:
@@ -83,13 +98,21 @@ def _format_bytes(values: List[int]) -> str:
 
 
 def _decode_nec(samples: List[int]) -> Optional[DecodedIR]:
-    if len(samples) < 2:
-        return None
-    pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 9000, 400) and _match_us(space, 4500, 300)):
-        return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
-    if not bits or len(bits) < 32:
+    spec = PdwmSpec(
+        name="NEC",
+        preamble_mark=9000,
+        preamble_space=4500,
+        bit1_mark=560,
+        bit1_space=1690,
+        bit0_mark=560,
+        bit0_space=560,
+        preamble_tolerance=200,
+        bit_tolerance=120,
+        min_split_time=4000,
+        databit_len=[32],
+    )
+    bits = _decode_pdwm(samples, spec)
+    if not bits:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
     if (bytes_[0] ^ 0xFF) == bytes_[1] and (bytes_[2] ^ 0xFF) == bytes_[3]:
@@ -100,13 +123,21 @@ def _decode_nec(samples: List[int]) -> Optional[DecodedIR]:
 
 
 def _decode_nec_ext(samples: List[int]) -> Optional[DecodedIR]:
-    if len(samples) < 2:
-        return None
-    pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 9000, 400) and _match_us(space, 4500, 300)):
-        return None
-    bits = _decode_pulse_distance(samples[2:], 560, 560, 1690, 32, 120)
-    if not bits or len(bits) < 32:
+    spec = PdwmSpec(
+        name="NECext",
+        preamble_mark=9000,
+        preamble_space=4500,
+        bit1_mark=560,
+        bit1_space=1690,
+        bit0_mark=560,
+        bit0_space=560,
+        preamble_tolerance=200,
+        bit_tolerance=120,
+        min_split_time=4000,
+        databit_len=[32],
+    )
+    bits = _decode_pdwm(samples, spec)
+    if not bits:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
     address = _format_bytes(bytes_[:2])
@@ -115,13 +146,21 @@ def _decode_nec_ext(samples: List[int]) -> Optional[DecodedIR]:
 
 
 def _decode_samsung(samples: List[int]) -> Optional[DecodedIR]:
-    if len(samples) < 2:
-        return None
-    pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 4500, 200) and _match_us(space, 4500, 200)):
-        return None
-    bits = _decode_pulse_distance(samples[2:], 550, 550, 1650, 32, 120)
-    if not bits or len(bits) < 32:
+    spec = PdwmSpec(
+        name="Samsung32",
+        preamble_mark=4500,
+        preamble_space=4500,
+        bit1_mark=550,
+        bit1_space=1650,
+        bit0_mark=550,
+        bit0_space=550,
+        preamble_tolerance=200,
+        bit_tolerance=120,
+        min_split_time=5000,
+        databit_len=[32],
+    )
+    bits = _decode_pdwm(samples, spec)
+    if not bits:
         return None
     bytes_ = [_bits_to_int(bits[i : i + 8]) for i in range(0, 32, 8)]
     address = _format_bytes(bytes_[:2])
@@ -146,26 +185,21 @@ def _decode_jvc(samples: List[int]) -> Optional[DecodedIR]:
 
 
 def _decode_sony(samples: List[int]) -> Optional[DecodedIR]:
-    if len(samples) < 2:
-        return None
-    pulse, space = samples[0], samples[1]
-    if not (_match_us(pulse, 2400, 200) and _match_us(space, 600, 120)):
-        return None
-    bits: List[int] = []
-    index = 2
-    while index + 1 < len(samples):
-        pulse = samples[index]
-        space = samples[index + 1]
-        if not _match_us(space, 600, 120):
-            break
-        if _match_us(pulse, 600, 120):
-            bits.append(0)
-        elif _match_us(pulse, 1200, 120):
-            bits.append(1)
-        else:
-            break
-        index += 2
-    if len(bits) not in {12, 15, 20}:
+    spec = PdwmSpec(
+        name="SIRC",
+        preamble_mark=2400,
+        preamble_space=600,
+        bit1_mark=1200,
+        bit1_space=600,
+        bit0_mark=600,
+        bit0_space=600,
+        preamble_tolerance=200,
+        bit_tolerance=120,
+        min_split_time=9000,
+        databit_len=[20, 15, 12],
+    )
+    bits = _decode_pdwm(samples, spec)
+    if not bits or len(bits) not in {12, 15, 20}:
         return None
     command = _bits_to_int(bits[:7])
     address_bits = bits[7:]
@@ -337,6 +371,41 @@ def _decode_pulse_distance(
     if len(bits) < expected_bits:
         return None
     return bits
+
+
+def _decode_pdwm(samples: List[int], spec: PdwmSpec) -> Optional[List[int]]:
+    if len(samples) < 2:
+        return None
+    pulse, space = samples[0], samples[1]
+    if spec.preamble_mark and not _match_us(
+        pulse, spec.preamble_mark, spec.preamble_tolerance
+    ):
+        return None
+    if spec.preamble_space and not _match_us(
+        space, spec.preamble_space, spec.preamble_tolerance
+    ):
+        return None
+    bits: List[int] = []
+    index = 2
+    while index + 1 < len(samples):
+        mark = samples[index]
+        gap = samples[index + 1]
+        if spec.min_split_time and gap > spec.min_split_time:
+            break
+        if _match_us(mark, spec.bit0_mark, spec.bit_tolerance) and _match_us(
+            gap, spec.bit0_space, spec.bit_tolerance
+        ):
+            bits.append(0)
+        elif _match_us(mark, spec.bit1_mark, spec.bit_tolerance) and _match_us(
+            gap, spec.bit1_space, spec.bit_tolerance
+        ):
+            bits.append(1)
+        else:
+            break
+        index += 2
+    if len(bits) in spec.databit_len:
+        return bits
+    return None
 
 
 def _estimate_unit(samples: List[int], expected_unit: int) -> int:
