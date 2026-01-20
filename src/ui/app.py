@@ -1017,16 +1017,20 @@ class IRScreen(BaseScreen):
     def __init__(self, master: tk.Misc, app: App) -> None:
         super().__init__(master, app)
         from ir.flipper_ir import FlipperIRSignal, parse_library_signals, serialize_signals
+        from ir.ir_decode import decode_raw_timings
         from ir.ir_library import IRLibraryStore
         from ir.lirc_client import LircClient
 
         self._flipper_signal = FlipperIRSignal
         self._parse_library_signals = parse_library_signals
         self._serialize_signals = serialize_signals
+        self._decode_raw_timings = decode_raw_timings
 
         self._status = tk.StringVar(value="")
         self._captures: list[dict[str, object]] = []
         self._capture_detail = tk.StringVar(value="")
+        self._capture_idle = tk.StringVar(value="2.0")
+        self._aggregate_mode = tk.StringVar(value="Selected")
         self._last_capture: Optional[dict[str, object]] = None
         self._capture_thread: Optional[threading.Thread] = None
         self._capture_stop = threading.Event()
@@ -1233,6 +1237,34 @@ class IRScreen(BaseScreen):
             style="Body.TLabel",
             wraplength=420,
         ).pack(pady=(0, 6))
+        options = ttk.Frame(control_card, style="Card.TFrame")
+        options.pack(fill=tk.X, padx=8, pady=(0, 6))
+        ttk.Label(options, text="Idle Finish (s)", style="Muted.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        self._capture_idle_picker = ttk.Combobox(
+            options,
+            textvariable=self._capture_idle,
+            state="readonly",
+            values=["1.0", "1.5", "2.0", "3.0", "5.0"],
+            width=6,
+        )
+        self._capture_idle_picker.grid(row=0, column=1, padx=(8, 16), sticky="w")
+        ttk.Label(options, text="Decode Using", style="Muted.TLabel").grid(
+            row=0, column=2, sticky="w"
+        )
+        self._aggregate_mode_picker = ttk.Combobox(
+            options,
+            textvariable=self._aggregate_mode,
+            state="readonly",
+            values=["Selected", "Best", "Median", "Mean"],
+            width=14,
+        )
+        self._aggregate_mode_picker.grid(row=0, column=3, padx=(8, 0), sticky="w")
+        self._aggregate_mode_picker.bind(
+            "<<ComboboxSelected>>", self._on_aggregate_mode_change
+        )
+        options.columnconfigure(4, weight=1)
 
         captures = ttk.Frame(frame, style="Card.TFrame")
         captures.pack(fill=tk.BOTH, expand=True, pady=6)
@@ -1265,15 +1297,29 @@ class IRScreen(BaseScreen):
             self._learn_button_row, text="Send", style="Small.TButton", command=self._send_learned_signal
         )
         self._learn_send_btn.grid(row=0, column=1, padx=4, sticky="ew")
+        self._learn_send_decoded_btn = ttk.Button(
+            self._learn_button_row,
+            text="Send Decoded",
+            style="Small.TButton",
+            command=self._send_decoded_learned_signal,
+        )
+        self._learn_send_decoded_btn.grid(row=0, column=2, padx=4, sticky="ew")
         self._learn_send_raw_btn = ttk.Button(
             self._learn_button_row, text="Send Raw", style="Small.TButton", command=self._send_raw_learned_signal
         )
-        self._learn_send_raw_btn.grid(row=0, column=2, padx=4, sticky="ew")
+        self._learn_send_raw_btn.grid(row=0, column=3, padx=4, sticky="ew")
         self._learn_save_btn = ttk.Button(
             self._learn_button_row, text="Save", style="Small.TButton", command=self._save_learned_signal
         )
-        self._learn_save_btn.grid(row=0, column=3, padx=4, sticky="ew")
-        for idx in range(4):
+        self._learn_save_btn.grid(row=0, column=4, padx=4, sticky="ew")
+        self._learn_save_decoded_btn = ttk.Button(
+            self._learn_button_row,
+            text="Save Decoded",
+            style="Small.TButton",
+            command=self._save_decoded_signal,
+        )
+        self._learn_save_decoded_btn.grid(row=0, column=5, padx=4, sticky="ew")
+        for idx in range(6):
             self._learn_button_row.columnconfigure(idx, weight=1)
         return frame
 
@@ -1434,14 +1480,29 @@ class IRScreen(BaseScreen):
 
     def _capture_loop(self) -> None:
         self._app.log_feature("IR", "Learn capture loop begin")
+        captured = 0
+        idle_timeout = self._capture_idle_timeout()
         while not self._capture_stop.is_set():
-            capture = self._client.capture_signal(self._capture_stop)
+            capture = self._client.capture_signal(self._capture_stop, timeout_s=idle_timeout)
             if not capture:
-                self._app.log_feature("IR", "Learn capture loop ended (no capture)")
+                if captured:
+                    self._app.log_feature("IR", "Learn capture loop ended (idle)")
+                    self._app.after(
+                        0,
+                        lambda: self._learn_instruction.set(
+                            "Capture complete. Review details below."
+                        ),
+                    )
+                else:
+                    self._app.log_feature("IR", "Learn capture loop ended (no capture)")
                 return
+            captured += 1
             self._app.after(0, lambda payload=capture: self._add_capture(payload))
+            self._app.after(
+                0,
+                lambda count=captured: self._update_learn_progress(count),
+            )
             self._app.log_feature("IR", "Learn capture received")
-            return
 
     def _add_capture(self, capture: dict[str, object]) -> None:
         self._captures.append(capture)
@@ -1453,19 +1514,13 @@ class IRScreen(BaseScreen):
         if hasattr(self, "_learn_button_row"):
             self._learn_button_row.pack(fill=tk.X, padx=8, pady=(0, 6))
         if hasattr(self, "_learn_capture_list"):
-            name = str(capture.get("name") or "Unknown")
-            signal_type = str(capture.get("signal_type") or "parsed")
-            protocol = str(capture.get("protocol") or "Unknown")
-            command = capture.get("command")
-            if signal_type == "raw":
-                data = capture.get("data") or []
-                detail = f"{name} | RAW | {len(data)} samples"
-            else:
-                detail = f"{name} | {protocol} | {command}"
+            detail = self._format_capture_list_entry(capture)
             self._learn_capture_list.insert(tk.END, detail)
             self._learn_capture_list.selection_clear(0, tk.END)
             self._learn_capture_list.selection_set(tk.END)
             self._learn_capture_list.event_generate("<<ListboxSelect>>")
+        if self._aggregate_mode.get().strip() != "Selected":
+            self._capture_detail.set(self._aggregate_detail_line())
 
     def _on_capture_select(self, event: tk.Event) -> None:
         listbox = event.widget
@@ -1473,23 +1528,10 @@ class IRScreen(BaseScreen):
             return
         index = listbox.curselection()[0]
         capture = self._captures[index]
-        signal_type = str(capture.get("signal_type") or "parsed")
-        if signal_type == "raw":
-            data = capture.get("data") or []
-            frequency = capture.get("frequency")
-            duty_cycle = capture.get("duty_cycle")
-            detail = f"Raw signal | Samples: {len(data)}"
-            if frequency:
-                detail += f" | Carrier: {frequency} Hz"
-            if duty_cycle is not None:
-                detail += f" | Duty: {duty_cycle:.2f}"
+        if self._aggregate_mode.get().strip() == "Selected":
+            self._capture_detail.set(self._format_capture_detail(capture))
         else:
-            detail = (
-                f"Protocol: {capture.get('protocol')} | "
-                f"Address: {capture.get('address')} | "
-                f"Command: {capture.get('command')}"
-            )
-        self._capture_detail.set(detail)
+            self._capture_detail.set(self._aggregate_detail_line())
 
     def _log_ir_capture(self, capture: dict[str, object]) -> None:
         if not self._app._log_enabled.get():
@@ -1536,10 +1578,226 @@ class IRScreen(BaseScreen):
             )
 
     def _selected_capture(self) -> Optional[dict[str, object]]:
+        mode = self._aggregate_mode.get().strip()
+        if mode in {"Best", "Median", "Mean"}:
+            aggregate = self._aggregate_capture(mode)
+            if aggregate:
+                return aggregate
         if hasattr(self, "_learn_capture_list") and self._learn_capture_list.curselection():
             index = self._learn_capture_list.curselection()[0]
             return self._captures[index]
         return self._last_capture
+
+    def _on_aggregate_mode_change(self, _event: tk.Event) -> None:
+        if self._aggregate_mode.get().strip() == "Selected":
+            if hasattr(self, "_learn_capture_list") and self._learn_capture_list.curselection():
+                index = self._learn_capture_list.curselection()[0]
+                capture = self._captures[index]
+                self._capture_detail.set(self._format_capture_detail(capture))
+        else:
+            self._capture_detail.set(self._aggregate_detail_line())
+
+    def _update_learn_progress(self, count: int) -> None:
+        idle = self._capture_idle_timeout()
+        self._learn_instruction.set(
+            f"Captured {count}. Press again or wait {idle:.1f}s to finish."
+        )
+
+    def _capture_idle_timeout(self) -> float:
+        try:
+            value = float(self._capture_idle.get())
+        except (TypeError, ValueError):
+            value = 2.0
+        return max(0.5, min(value, 10.0))
+
+    def _format_capture_list_entry(self, capture: dict[str, object]) -> str:
+        name = str(capture.get("name") or "Unknown")
+        signal_type = str(capture.get("signal_type") or "parsed")
+        protocol = str(capture.get("protocol") or "Unknown")
+        command = capture.get("command")
+        if signal_type == "raw":
+            data = capture.get("data") or []
+            return f"{name} | RAW | {len(data)} samples"
+        return f"{name} | {protocol} | {command}"
+
+    def _format_capture_detail(self, capture: dict[str, object]) -> str:
+        signal_type = str(capture.get("signal_type") or "parsed")
+        if signal_type == "raw":
+            data = capture.get("data") or []
+            frequency = capture.get("frequency")
+            duty_cycle = capture.get("duty_cycle")
+            detail = f"Raw signal | Samples: {len(data)}"
+            if frequency:
+                detail += f" | Carrier: {frequency} Hz"
+            if duty_cycle is not None:
+                detail += f" | Duty: {duty_cycle:.2f}"
+            return detail
+        return (
+            f"Protocol: {capture.get('protocol')} | "
+            f"Address: {capture.get('address')} | "
+            f"Command: {capture.get('command')}"
+        )
+
+    def _aggregate_capture(self, mode: str) -> Optional[dict[str, object]]:
+        if not self._captures:
+            return None
+        raw_entries = []
+        for capture in self._captures:
+            raw_data = capture.get("raw_burst") or capture.get("raw_data") or capture.get("data")
+            if raw_data:
+                raw_entries.append((capture, list(raw_data)))
+        if raw_entries:
+            trimmed = self._trim_raw_entries(raw_entries)
+            baseline = self._aggregate_raw_baseline(trimmed, mode)
+            if baseline is None:
+                return None
+            if mode == "Best":
+                best = self._select_best_raw(trimmed, baseline)
+                if best:
+                    return best
+            frequency, duty_cycle = self._select_carrier(raw_entries)
+            return {
+                "name": f"Aggregate {mode}",
+                "signal_type": "raw",
+                "protocol": "RAW",
+                "address": None,
+                "command": None,
+                "scancode": None,
+                "source": "aggregate",
+                "frequency": frequency,
+                "duty_cycle": duty_cycle,
+                "data": baseline,
+                "raw_data": baseline,
+                "raw_burst": baseline,
+            }
+        parsed = self._aggregate_parsed()
+        return parsed
+
+    def _aggregate_parsed(self) -> Optional[dict[str, object]]:
+        parsed = [capture for capture in self._captures if capture.get("signal_type") != "raw"]
+        if not parsed:
+            return None
+        protocol = self._majority_value([cap.get("protocol") for cap in parsed])
+        address = self._majority_value([cap.get("address") for cap in parsed])
+        command = self._majority_value([cap.get("command") for cap in parsed])
+        return {
+            "name": "Aggregate Parsed",
+            "signal_type": "parsed",
+            "protocol": protocol,
+            "address": address,
+            "command": command,
+            "scancode": None,
+            "source": "aggregate",
+            "frequency": None,
+            "duty_cycle": None,
+            "data": None,
+        }
+
+    def _majority_value(self, values: list[object]) -> Optional[object]:
+        counts: dict[object, int] = {}
+        for value in values:
+            if value is None:
+                continue
+            counts[value] = counts.get(value, 0) + 1
+        if not counts:
+            return None
+        return max(counts.items(), key=lambda item: item[1])[0]
+
+    def _trim_raw_entries(
+        self, entries: list[tuple[dict[str, object], list[int]]]
+    ) -> list[tuple[dict[str, object], list[int]]]:
+        lengths = [len(data) for _, data in entries if data]
+        if not lengths:
+            return []
+        min_len = min(lengths)
+        trimmed = []
+        for capture, data in entries:
+            if len(data) >= min_len:
+                trimmed.append((capture, data[:min_len]))
+        return trimmed
+
+    def _aggregate_raw_baseline(
+        self, entries: list[tuple[dict[str, object], list[int]]], mode: str
+    ) -> Optional[list[int]]:
+        if not entries:
+            return None
+        samples = [data for _, data in entries]
+        if not samples:
+            return None
+        length = len(samples[0])
+        baseline: list[int] = []
+        for idx in range(length):
+            column = [row[idx] for row in samples]
+            if mode == "Mean":
+                baseline.append(int(sum(column) / len(column)))
+            else:
+                baseline.append(self._median_int(column))
+        return baseline
+
+    def _select_best_raw(
+        self,
+        entries: list[tuple[dict[str, object], list[int]]],
+        baseline: list[int],
+    ) -> Optional[dict[str, object]]:
+        if not entries or not baseline:
+            return None
+        best_capture = None
+        best_score = None
+        for capture, data in entries:
+            score = sum(abs(a - b) for a, b in zip(data, baseline))
+            if best_score is None or score < best_score:
+                best_score = score
+                best_capture = capture
+        return best_capture
+
+    def _select_carrier(
+        self, entries: list[tuple[dict[str, object], list[int]]]
+    ) -> tuple[Optional[int], Optional[float]]:
+        frequencies = [cap.get("raw_frequency") or cap.get("frequency") for cap, _ in entries]
+        duties = [cap.get("raw_duty_cycle") or cap.get("duty_cycle") for cap, _ in entries]
+        frequency = self._majority_value([value for value in frequencies if value])
+        duty = self._majority_value([value for value in duties if value is not None])
+        return frequency, duty
+
+    def _median_int(self, values: list[int]) -> int:
+        if not values:
+            return 0
+        ordered = sorted(values)
+        mid = len(ordered) // 2
+        if len(ordered) % 2 == 1:
+            return int(ordered[mid])
+        return int((ordered[mid - 1] + ordered[mid]) / 2)
+
+    def _aggregate_detail_line(self) -> str:
+        raw_entries = []
+        for capture in self._captures:
+            raw_data = capture.get("raw_burst") or capture.get("raw_data") or capture.get("data")
+            if raw_data:
+                raw_entries.append(list(raw_data))
+        if len(raw_entries) < 2:
+            return "Aggregate requires at least 2 raw captures."
+        min_len = min(len(data) for data in raw_entries)
+        trimmed = [data[:min_len] for data in raw_entries]
+        if not trimmed:
+            return "Aggregate requires raw captures."
+        std_values = []
+        for idx in range(min_len):
+            column = [row[idx] for row in trimmed]
+            mean = sum(column) / len(column)
+            variance = sum((value - mean) ** 2 for value in column) / len(column)
+            std_values.append(math.sqrt(variance))
+        avg_std = sum(std_values) / len(std_values) if std_values else 0.0
+        accuracy = self._accuracy_from_std(avg_std)
+        return f"Aggregate deviation: {avg_std:.1f} us | Likely accuracy: {accuracy:.0f}%"
+
+    def _accuracy_from_std(self, avg_std: float) -> float:
+        good = 150.0
+        poor = 800.0
+        if avg_std <= good:
+            return 100.0
+        if avg_std >= poor:
+            return 0.0
+        return 100.0 * (poor - avg_std) / (poor - good)
 
     def _send_learned_signal(self) -> None:
         capture = self._selected_capture()
@@ -1596,6 +1854,21 @@ class IRScreen(BaseScreen):
         else:
             self._set_status("Sent raw signal.")
 
+    def _send_decoded_learned_signal(self) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Learn Remote", "No captured signal to send.")
+            return
+        parsed = self._decode_capture_for_send(capture)
+        if not parsed:
+            messagebox.showerror(
+                "Learn Remote", "Unable to decode a parsed signal from this capture."
+            )
+            return
+        protocol, address, command = parsed
+        self._app.log_feature("IR", "Learn send decoded signal")
+        self._send_parsed_signal(protocol, address, command, "Learn Remote")
+
     def _save_learned_signal(self) -> None:
         capture = self._selected_capture()
         if not capture:
@@ -1646,6 +1919,70 @@ class IRScreen(BaseScreen):
         self._refresh_saved_remotes()
         self._select_saved_remote(device)
         messagebox.showinfo("Learn Remote", f"Saved {button_name} to {device}.")
+
+    def _save_decoded_signal(self) -> None:
+        capture = self._selected_capture()
+        if not capture:
+            messagebox.showinfo("Learn Remote", "No captured signal to save.")
+            return
+        parsed = self._decode_capture_for_send(capture)
+        if not parsed:
+            messagebox.showerror(
+                "Learn Remote", "Unable to decode a parsed signal from this capture."
+            )
+            return
+        protocol, address, command = parsed
+        device = simpledialog.askstring("Device Name", "Enter the device name:")
+        if not device:
+            return
+        button_name = simpledialog.askstring("Button Name", "Enter the button name:")
+        if not button_name:
+            return
+        signals = self._ir_library.load_remote(device) or []
+        raw_burst = capture.get("raw_burst") or capture.get("data")
+        raw_frequency = capture.get("raw_frequency") or capture.get("frequency")
+        raw_duty = capture.get("raw_duty_cycle") or capture.get("duty_cycle")
+        if not raw_frequency or raw_duty is None:
+            raw_frequency, raw_duty = self._default_carrier(str(protocol or ""))
+        decoded_signal = self._flipper_signal(
+            name=button_name,
+            signal_type="parsed",
+            protocol=protocol,
+            address=address,
+            command=command,
+        )
+        signals.append(decoded_signal)
+        if raw_burst:
+            raw_variant = self._flipper_signal(
+                name=f"{button_name} (raw)",
+                signal_type="raw",
+                frequency=raw_frequency,
+                duty_cycle=raw_duty,
+                data=raw_burst,
+            )
+            signals.append(raw_variant)
+        self._ir_library.save_remote_signals(device, signals)
+        self._refresh_saved_remotes()
+        self._select_saved_remote(device)
+        messagebox.showinfo("Learn Remote", f"Saved {button_name} to {device}.")
+
+    def _decode_capture_for_send(
+        self, capture: dict[str, object]
+    ) -> Optional[tuple[str, str, str]]:
+        signal_type = str(capture.get("signal_type") or "parsed")
+        if signal_type != "raw":
+            protocol = str(capture.get("protocol") or "")
+            address = str(capture.get("address") or "")
+            command = str(capture.get("command") or "")
+            if protocol and address and command:
+                return protocol, address, command
+        raw_data = capture.get("raw_burst") or capture.get("raw_data") or capture.get("data")
+        if not raw_data:
+            return None
+        decoded = self._decode_raw_timings(raw_data)
+        if not decoded:
+            return None
+        return decoded.protocol, decoded.address, decoded.command
 
     def _refresh_saved_remotes(self) -> None:
         self._saved_remotes = [remote.name for remote in self._ir_library.list_remotes()]
