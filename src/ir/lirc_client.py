@@ -9,6 +9,7 @@ import subprocess
 import threading
 import tempfile
 import time
+from statistics import median
 from typing import Iterable, Iterator, List, Optional, Tuple
 
 from ir.ir_decode import decode_raw_timings
@@ -177,7 +178,17 @@ class LircClient:
 
         if raw_result.get("has_data"):
             full_data = raw_result.get("data") or []
-            decoded, selected = self._decode_best_burst(full_data)
+            bursts = raw_result.get("bursts") or []
+            selected = self._select_consensus_burst(bursts) if bursts else []
+            decoded = decode_raw_timings(selected) if selected else None
+            if not decoded and bursts:
+                for burst in bursts:
+                    decoded = decode_raw_timings(burst)
+                    if decoded:
+                        selected = burst
+                        break
+            if not decoded and not selected:
+                decoded, selected = self._decode_best_burst(full_data)
             if decoded:
                 return {
                     "name": decoded.protocol,
@@ -412,6 +423,13 @@ class LircClient:
         deadline = time.monotonic() + timeout_s
         seen_burst = False
         burst_complete = False
+        current_burst: List[int] = []
+        bursts: List[List[int]] = []
+        burst_gap_us = 10000
+        burst_window_s = 1.0
+        min_burst_samples = 20
+        target_bursts = 3
+        first_burst_time: Optional[float] = None
         for line in process.stdout:
             if stop_event.is_set() or capture_stop.is_set():
                 break
@@ -421,9 +439,8 @@ class LircClient:
             if stripped:
                 raw_lines.append(stripped)
             if not stripped:
-                if data and seen_burst:
+                if seen_burst and current_burst:
                     burst_complete = True
-                    break
                 continue
             lower = stripped.lower()
             if lower.startswith("carrier"):
@@ -440,38 +457,71 @@ class LircClient:
                         duty_cycle = None
                 continue
             if "timeout" in lower:
-                if data and seen_burst:
+                if seen_burst and current_burst:
                     burst_complete = True
-                    break
                 continue
             tokens = re.findall(r"[+-]\d+", stripped)
             if tokens:
                 for token in tokens:
                     value = int(token)
                     signed_data.append(value)
-                    if abs(value) > 20000 and seen_burst:
-                        burst_complete = True
-                        break
+                    if abs(value) > burst_gap_us and current_burst:
+                        if len(current_burst) % 2 == 1:
+                            current_burst = current_burst[:-1]
+                        if len(current_burst) >= min_burst_samples:
+                            bursts.append(current_burst)
+                            if first_burst_time is None:
+                                first_burst_time = time.monotonic()
+                        current_burst = []
+                        if (
+                            first_burst_time is not None
+                            and time.monotonic() - first_burst_time > burst_window_s
+                        ) or len(bursts) >= target_bursts:
+                            burst_complete = True
+                            break
+                        continue
                     if value > 0:
                         seen_burst = True
-                if burst_complete and len(signed_data) > 80:
+                        current_burst.append(value)
+                    else:
+                        current_burst.append(abs(value))
+                if burst_complete and (len(bursts) >= target_bursts or len(signed_data) > 80):
                     break
                 continue
             match = re.search(r"(pulse|space)\s+(\d+)", lower)
             if match:
                 value = int(match.group(2))
                 signed_data.append(value if match.group(1) == "pulse" else -value)
-                if value > 20000 and seen_burst:
-                    burst_complete = True
+                if value > burst_gap_us and seen_burst and current_burst:
+                    if len(current_burst) % 2 == 1:
+                        current_burst = current_burst[:-1]
+                    if len(current_burst) >= min_burst_samples:
+                        bursts.append(current_burst)
+                        if first_burst_time is None:
+                            first_burst_time = time.monotonic()
+                    current_burst = []
+                    if (
+                        first_burst_time is not None
+                        and time.monotonic() - first_burst_time > burst_window_s
+                    ) or len(bursts) >= target_bursts:
+                        burst_complete = True
+                        break
+                    continue
                 if value > 0:
                     seen_burst = True
-                if burst_complete and len(signed_data) > 80:
+                current_burst.append(value)
+                if burst_complete and (len(bursts) >= target_bursts or len(signed_data) > 80):
                     break
                 continue
             value_match = re.search(r"(\d+)", stripped)
             if value_match:
                 signed_data.append(int(value_match.group(1)))
         process.terminate()
+        if current_burst:
+            if len(current_burst) % 2 == 1:
+                current_burst = current_burst[:-1]
+            if len(current_burst) >= min_burst_samples:
+                bursts.append(current_burst)
         data = self._normalize_signed_timings(signed_data)
         return {
             "device": device,
@@ -483,6 +533,7 @@ class LircClient:
             "command": " ".join(command),
             "source": "ir-ctl",
             "has_data": bool(data),
+            "bursts": bursts,
         }
 
     def _split_bursts(self, data: List[int], gap_us: int) -> List[List[int]]:
@@ -506,6 +557,64 @@ class LircClient:
                 bursts.append(current)
         return bursts
 
+    def _trim_burst(self, burst: List[int]) -> List[int]:
+        if not burst:
+            return []
+        unit = self._estimate_unit(burst, 560)
+        gap_threshold = max(10000, int(unit * 16))
+        trimmed: List[int] = []
+        for value in burst:
+            if value >= gap_threshold:
+                break
+            trimmed.append(value)
+        if len(trimmed) % 2 == 1:
+            trimmed = trimmed[:-1]
+        return trimmed
+
+    def _normalize_burst(self, burst: List[int]) -> List[int]:
+        if not burst:
+            return []
+        unit = self._estimate_unit(burst, 560)
+        if unit <= 0:
+            return []
+        return [max(1, int(round(value / unit))) for value in burst]
+
+    def _estimate_unit(self, samples: List[int], expected_unit: int) -> int:
+        candidates = [value for value in samples if 200 <= value <= 2000]
+        if not candidates:
+            return expected_unit
+        return int(median(candidates))
+
+    def _burst_distance(self, left: List[int], right: List[int]) -> int:
+        if not left or not right:
+            return 10**9
+        len_diff = abs(len(left) - len(right))
+        limit = min(len(left), len(right))
+        diff = sum(abs(left[idx] - right[idx]) for idx in range(limit))
+        return diff + (len_diff * 2)
+
+    def _select_consensus_burst(self, bursts: List[List[int]]) -> List[int]:
+        candidates = [burst for burst in bursts if len(burst) >= 40]
+        if not candidates:
+            candidates = bursts
+        trimmed_candidates: List[List[int]] = []
+        for burst in candidates:
+            trimmed = self._trim_burst(burst)
+            trimmed_candidates.append(trimmed if len(trimmed) >= 10 else burst)
+        normalized = [self._normalize_burst(burst) for burst in trimmed_candidates]
+        best_index = 0
+        best_score = 10**12
+        for i, left in enumerate(normalized):
+            score = 0
+            for j, right in enumerate(normalized):
+                if i == j:
+                    continue
+                score += self._burst_distance(left, right)
+            if score < best_score:
+                best_score = score
+                best_index = i
+        return trimmed_candidates[best_index] if trimmed_candidates else []
+
     def _decode_best_burst(
         self, data: List[int]
     ) -> Tuple[Optional["DecodedIR"], List[int]]:
@@ -513,6 +622,9 @@ class LircClient:
         if not bursts:
             return None, data
         best: List[int] = max(bursts, key=len)
+        trimmed_best = self._trim_burst(best)
+        if trimmed_best:
+            best = trimmed_best
         decoded_best: Optional["DecodedIR"] = None
         decoded_burst: List[int] = []
         decode_candidates = bursts
