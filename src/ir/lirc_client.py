@@ -76,6 +76,13 @@ class LircClient:
         )
         if result.returncode != 0:
             message = result.stderr.strip() or result.stdout.strip()
+            if message:
+                lowered = message.lower()
+                if "protocol" in lowered and "not found" in lowered:
+                    message = (
+                        f"{message} Try `ir-keytable -p` (no args) and enable a"
+                        " supported protocol with `ir-keytable -p`."
+                    )
             return False, message or "ir-ctl failed to send."
         return True, "Sent."
 
