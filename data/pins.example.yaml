@@ -1,0 +1,35 @@
+# PIP-UI wiring map. Copy to data/pins.yaml and edit to match your build.
+#
+# Each assignment binds a physical header pin (1-40) to a label and an owner.
+# `owner` groups pins in the UI and should match a tool id where it makes sense
+# (pn532, ir, ...). Values below are the defaults the README documents -- check
+# them against your actual wiring before trusting the display.
+
+assignments:
+  - pin: 1
+    label: PN532 VCC
+    owner: pn532
+  - pin: 3
+    label: PN532 SDA
+    owner: pn532
+  - pin: 5
+    label: PN532 SCL
+    owner: pn532
+  - pin: 6
+    label: PN532 GND
+    owner: pn532
+
+  - pin: 2
+    label: IR TX VCC (5V)
+    owner: ir
+  - pin: 12
+    label: IR TX data (GPIO18)
+    owner: ir
+  - pin: 16
+    label: IR RX out (GPIO23)
+    owner: ir
+
+  # Add your own, for example a status LED or a hardware button:
+  # - pin: 11
+  #   label: Status LED
+  #   owner: system

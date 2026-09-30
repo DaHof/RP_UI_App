@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>PIP-UI</title>
+<style>
+/* ===========================================================================
+   1. TOKENS
+   Every theme is only a variable block -- no structural CSS below changes.
+   That is why eight themes cost about what two would.
+   =========================================================================== */
+:root{
+  --font-ui: system-ui,-apple-system,"Segoe UI",Roboto,"DejaVu Sans","Noto Sans",sans-serif;
+  --font-mono: ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono","Noto Mono",monospace;
+  --z-splash: 60; --z-modal: 50; --z-toast: 40; --z-sheet: 30; --z-header: 10;
+}
+[data-theme]{
+  --metal-hi:#3b414b; --metal:#2b2f37; --metal-lo:#0f1114;
+  --face-hi:#242830; --face-lo:#191c22; --recess:#0c0e12;
+  --ink:#e8e6e1; --ink-dim:#8a9098; --ink-faint:#666c74;
+  --accent:#f2b544; --on-accent:#1a1205;
+  --green:#4ab46e; --red:#e2565c; --cyan:#54b9c4;
+  --bg1:#15171b; --bg2:#101216;
+  --pin:rgba(255,255,255,.014); --hi:rgba(255,255,255,.04); --hi2:rgba(255,255,255,.05);
+}
+[data-theme="night"]{
+  --metal-hi:#3d0f0b; --metal:#2a0a08; --metal-lo:#0a0000;
+  --face-hi:#150303; --face-lo:#0d0202; --recess:#080000;
+  --ink:#f5483a; --ink-dim:#a8342b; --ink-faint:#6d211b;
+  --accent:#f5483a; --on-accent:#180100;
+  --green:#f5483a; --red:#f5483a; --cyan:#f5483a;
+  --bg1:#0a0000; --bg2:#000000;
+  --hi:rgba(245,72,58,.05); --hi2:rgba(245,72,58,.06);
+}
+[data-theme="bench"]{
+  --metal-hi:#2c3e4f; --metal:#1e2b38; --metal-lo:#080d12;
+  --face-hi:#18222d; --face-lo:#141c26; --recess:#0b1016;
+  --ink:#e6f0f6; --ink-dim:#8aa4b5; --ink-faint:#5a7183;
+  --accent:#36d1cc; --on-accent:#04161a;
+  --green:#36d1cc; --red:#ff6b6b; --cyan:#36d1cc;
+  --bg1:#0a1017; --bg2:#000000;
+}
+[data-theme="field"]{
+  --metal-hi:#3a3a3a; --metal:#2e2e2e; --metal-lo:#000000;
+  --face-hi:#161616; --face-lo:#101010; --recess:#000000;
+  --ink:#ffffff; --ink-dim:#b5b5b5; --ink-faint:#8a8a8a;
+  --accent:#f7931e; --on-accent:#000000;
+  --green:#24d16a; --red:#ff3b30; --cyan:#f7931e;
+  --bg1:#0a0a0a; --bg2:#000000;
+}
+[data-theme="phosphor"]{
+  --metal-hi:#1c3a24; --metal:#123018; --metal-lo:#02120a;
+  --face-hi:#0a1f10; --face-lo:#06170b; --recess:#020d06;
+  --ink:#7dfca8; --ink-dim:#3f9b62; --ink-faint:#2a6b43;
+  --accent:#39ff88; --on-accent:#02170a;
+  --green:#39ff88; --red:#ff7b6b; --cyan:#39ff88;
+  --bg1:#04140a; --bg2:#010703;
+  --hi:rgba(125,252,168,.05); --hi2:rgba(125,252,168,.06);
+}
+[data-theme="amber"]{
+  --metal-hi:#3d2e10; --metal:#2b200a; --metal-lo:#120b02;
+  --face-hi:#1e1608; --face-lo:#150f05; --recess:#0b0702;
+  --ink:#ffc24d; --ink-dim:#a87c22; --ink-faint:#6f5115;
+  --accent:#ffb01f; --on-accent:#1a1002;
+  --green:#ffc24d; --red:#ff6b3d; --cyan:#ffc24d;
+  --bg1:#120c02; --bg2:#080500;
+  --hi:rgba(255,194,77,.05); --hi2:rgba(255,194,77,.06);
+}
+[data-theme="blueprint"]{
+  --metal-hi:#1f3d63; --metal:#162c49; --metal-lo:#050d1a;
+  --face-hi:#0e2038; --face-lo:#0a182b; --recess:#040c18;
+  --ink:#d6e8ff; --ink-dim:#7f9fc4; --ink-faint:#57779b;
+  --accent:#4db8ff; --on-accent:#03121f;
+  --green:#3ed6a0; --red:#ff6b8a; --cyan:#4db8ff;
+  --bg1:#061223; --bg2:#030a14;
+}
+[data-theme="daylight"]{
+  --metal-hi:#ffffff; --metal:#c3c9d2; --metal-lo:#9aa2ad;
+  --face-hi:#ffffff; --face-lo:#eaeef3; --recess:#dfe4ec;
+  --ink:#10151b; --ink-dim:#4a535f; --ink-faint:#697380;
+  --accent:#0062c4; --on-accent:#ffffff;
+  --green:#12813f; --red:#c2231f; --cyan:#0062c4;
+  --bg1:#f3f6fa; --bg2:#e4e9f0;
+  --pin:rgba(0,0,0,.02); --hi:rgba(255,255,255,.9); --hi2:rgba(255,255,255,.95);
+}
+
+/* ===========================================================================
+   2. BASE
+   =========================================================================== */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--font-ui);font-size:13px;color:var(--ink);
+  -webkit-user-select:none;user-select:none;overflow:hidden;
+  background:repeating-linear-gradient(90deg,var(--pin) 0 1px,transparent 1px 3px),
+             linear-gradient(180deg,var(--bg1),var(--bg2));
+}
+#app{height:100%;display:flex;flex-direction:column}
+.mono{font-family:var(--font-mono)}
+svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--metal);border-radius:3px}
+
+/* ===========================================================================
+   3. HEADER
+   =========================================================================== */
+header{
+  height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 11px;
+  z-index:var(--z-header);border-bottom:1px solid var(--metal-lo);
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  box-shadow:inset 0 1px 0 var(--hi2),0 2px 6px rgba(0,0,0,.45);
+}
+.iconbtn{
+  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;
+  color:var(--ink);border-radius:6px;font:inherit;
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi);
+}
+.iconbtn:active{transform:translateY(1px);filter:brightness(.92)}
+.iconbtn svg.ic{width:18px;height:18px}
+.iconbtn[hidden]{display:none}
+.plate{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
+  letter-spacing:.15em;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.pwr{width:7px;height:7px;border-radius:50%;flex:none;background:var(--green)}
+.presence{display:flex;gap:10px;margin-left:auto;align-items:center}
+.pchip{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.pchip[data-on="1"]{color:var(--ink-dim)}
+.lcd{flex:1;max-width:190px;min-width:96px;position:relative;height:34px;border-radius:5px;
+  overflow:hidden;background:var(--recess);border:1px solid var(--metal-lo);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+.spec{position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px;padding:3px 5px}
+.spec i{flex:1;background:var(--accent);opacity:.4;border-radius:1px 1px 0 0;
+  transition:height .16s linear}
+.lcd-read{position:absolute;top:4px;left:8px;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:.08em;color:var(--accent)}
+
+/* ---------------------------------------------------------------------------
+   LED -- colour AND shape.
+   In the night theme every hue collapses to red, so hue alone cannot carry
+   state. The silhouette does: filled circle = pass, hollow = idle,
+   haloed = running, rounded square = fault.
+   --------------------------------------------------------------------------- */
+.led{width:9px;height:9px;border-radius:50%;flex:none;background:var(--ink-faint);
+  position:relative}
+.led[data-s="PASS"]{background:var(--green)}
+.led[data-s="idle"],.led[data-s="UNKNOWN"]{background:transparent;
+  box-shadow:inset 0 0 0 2px var(--ink-faint)}
+.led[data-s="WARN"]{background:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
+  animation:pulse 1.6s ease-in-out infinite}
+.led[data-s="FAIL"]{background:var(--red);border-radius:2px}
+.led.lg{width:11px;height:11px}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 32%,transparent)}
+  50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 7%,transparent)}
+}
+
+/* ===========================================================================
+   4. LAYOUT + PANELS
+   =========================================================================== */
+main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16px;
+  -webkit-overflow-scrolling:touch}
+.view{display:none}
+.view.on{display:block}
+.sec{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
+.sec:not(:first-child){margin-top:14px}
+.sec svg.ic{width:13px;height:13px;color:var(--ink-faint);stroke-width:1.5}
+.sec .lbl{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim)}
+.sec .groove{flex:1;height:0;border-top:1px solid var(--metal-lo);box-shadow:0 1px 0 var(--metal)}
+
+.panel{
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi);
+  border-bottom-color:var(--metal-lo);border-radius:8px;padding:12px;
+  box-shadow:inset 0 1px 0 var(--hi),0 1px 3px rgba(0,0,0,.4);margin-bottom:10px}
+.panel > h3{margin:0 0 9px;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-dim);font-weight:600}
+.readout{background:var(--recess);border:1px solid var(--metal-lo);border-radius:6px;
+  padding:10px 12px;box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+.readout .rl{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+.readout .big{font-family:var(--font-mono);font-size:20px;letter-spacing:.09em;
+  color:var(--cyan);margin-top:3px;word-break:break-all}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chip{font-size:9.5px;color:var(--cyan);border:1px solid var(--metal);
+  background:var(--recess);border-radius:4px;padding:1px 6px}
+
+.row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12.5px;
+  border-bottom:1px solid var(--metal-lo)}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--ink-dim)}
+.row .v{margin-left:auto;font-family:var(--font-mono);color:var(--ink);text-align:right;
+  word-break:break-all}
+.row .v.dim{color:var(--ink-faint)}
+
+/* Status row: LED + a label that must never wrap + a detail that often runs
+   long (a probe explaining itself). Clamped to two lines so one chatty probe
+   cannot push everything else off a 480px screen. */
+.srow{display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:12.5px;
+  border-bottom:1px solid var(--metal-lo)}
+.srow:last-child{border-bottom:0}
+.srow .led{margin-top:3px}
+.srow .k{color:var(--ink-dim);white-space:nowrap;flex:none}
+.srow .d{flex:1;min-width:0;text-align:right;font-family:var(--font-mono);font-size:10.5px;
+  color:var(--ink-faint);line-height:1.45;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+
+/* ---- tiles ---- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
+.mod{position:relative;display:flex;flex-direction:column;gap:4px;padding:9px 10px;
+  min-height:70px;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi);
+  border-bottom-color:var(--metal-lo);
+  box-shadow:inset 0 1px 0 var(--hi),0 1px 2px rgba(0,0,0,.35);
+  transition:transform .06s,filter .12s}
+.mod:active{transform:translateY(1px);filter:brightness(.93)}
+.mod .top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.mod svg.ic{width:20px;height:20px;color:var(--ink-dim)}
+.mod .nm{font-size:12px;font-weight:600}
+.mod .cmd{margin-top:auto;font-family:var(--font-mono);font-size:9px;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mod .up{margin-top:auto;font-family:var(--font-mono);font-size:9.5px;color:var(--accent)}
+.mod.on{border-color:var(--accent);box-shadow:inset 0 1px 0 var(--hi),0 0 0 1px var(--accent)}
+.mod.on svg.ic{color:var(--accent)}
+.mod.off{opacity:.45;cursor:not-allowed}
+.tag{font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);
+  border:1px solid var(--metal);border-radius:3px;padding:0 3px;white-space:nowrap}
+
+/* ---- buttons ---- */
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:38px;padding:0 14px;border-radius:6px;cursor:pointer;
+  font:inherit;font-size:12px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi)}
+.btn:active{transform:translateY(1px);filter:brightness(.92)}
+.btn svg.ic{width:16px;height:16px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.pri{color:var(--on-accent);background:var(--accent);border-color:transparent}
+.btn.danger{color:var(--red);border-color:var(--red)}
+/* Night: a large saturated fill is the worst thing to show a dark-adapted eye. */
+[data-theme="night"] .btn.pri{background:transparent;color:var(--accent);
+  border:1px solid var(--accent)}
+
+.banner{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--accent);
+  background:var(--recess);border:1px solid var(--metal);border-radius:7px;
+  padding:10px 12px;margin-bottom:10px;line-height:1.4}
+.banner svg.ic{width:16px;height:16px;margin-top:1px}
+.banner.bad{color:var(--red)}
+.empty{text-align:center;color:var(--ink-faint);font-size:12.5px;padding:26px 12px;line-height:1.5}
+
+/* ---- pin header map ---- */
+.hdr40{display:grid;grid-template-columns:1fr auto 1fr;gap:0 10px;align-items:center;
+  font-family:var(--font-mono);font-size:10px}
+.pin{display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:3px;
+  min-height:19px;white-space:nowrap;overflow:hidden}
+.pin.r{flex-direction:row-reverse;text-align:right}
+.pin .no{width:17px;text-align:center;color:var(--ink-faint);border:1px solid var(--metal);
+  border-radius:3px;flex:none;font-size:9px}
+.pin .nmx{color:var(--ink-dim);flex:none}
+.pin .fn{color:var(--ink-faint);font-size:9px;overflow:hidden;text-overflow:ellipsis}
+.pin.assigned{background:color-mix(in srgb,var(--accent) 15%,transparent)}
+.pin.assigned .nmx,.pin.assigned .fn{color:var(--accent)}
+.pin.assigned .no{border-color:var(--accent);color:var(--accent)}
+/* "rail", not "pwr" -- the header's power LED already owns .pwr, and the
+   collision turned every 3V3/5V row into a 7px green dot. */
+.pin.rail .nmx{color:var(--red)}
+.pin.gnd .nmx{color:var(--ink-faint)}
+.spine{width:12px;border-left:1px dashed var(--metal);height:100%}
+
+/* ---- theme picker ---- */
+.themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.swatch{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:6px;cursor:pointer;
+  font:inherit;color:var(--ink);text-align:left;
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi)}
+.swatch[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.swatch .dots{display:flex;gap:4px}
+.swatch .dots i{width:11px;height:11px;border-radius:50%;display:block}
+.swatch .tn{font-size:11px;font-weight:600}
+.swatch .td{font-size:9px;color:var(--ink-faint)}
+
+/* ===========================================================================
+   5. OVERLAYS -- splash, modal, toast
+   =========================================================================== */
+#splash{position:fixed;inset:0;z-index:var(--z-splash);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;padding:24px;
+  background:linear-gradient(180deg,var(--bg1),var(--bg2))}
+#splash.gone{opacity:0;pointer-events:none;transition:opacity .32s ease}
+@media (prefers-reduced-motion:reduce){#splash.gone{transition:none}}
+#splash .mark{font-size:15px;font-weight:700;letter-spacing:.3em;color:var(--accent)}
+#splash .sub{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+#bootlist{width:100%;max-width:340px;margin-top:4px}
+#bootlist .row{padding:5px 0;font-size:12px}
+#bootlist .row .v{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  font-family:var(--font-ui);font-weight:700;color:var(--ink-dim)}
+
+#modal{position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;
+  justify-content:center;padding:22px;background:rgba(0,0,0,.62)}
+#modal.on{display:flex}
+#modal .box{width:100%;max-width:380px;border-radius:9px;padding:16px;
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi);
+  box-shadow:0 8px 28px rgba(0,0,0,.6)}
+#modal h4{margin:0 0 7px;font-size:14px}
+#modal p{margin:0;font-size:12.5px;color:var(--ink-dim);line-height:1.5}
+#modal .warn{margin-top:9px;font-size:11.5px;color:var(--red);font-family:var(--font-mono);
+  word-break:break-all}
+
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(16px);
+  z-index:var(--z-toast);opacity:0;pointer-events:none;padding:10px 16px;border-radius:7px;
+  font-size:12.5px;max-width:86vw;text-align:center;
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi);
+  box-shadow:0 4px 16px rgba(0,0,0,.55);transition:opacity .18s,transform .18s}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ===========================================================================
+     6. ICON SPRITE -- inline, no network
+     =========================================================================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11 12 3.5l8.5 7.5v8.2a1 1 0 0 1-1 1h-4.6v-5.7H9.1v5.7H4.5a1 1 0 0 1-1-1z"/></symbol>
+ <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><rect x="6" y="9.5" width="3.5" height="3" rx=".6"/><path d="M18.5 9a4.5 4.5 0 0 1 0 6M20.8 7a7.5 7.5 0 0 1 0 10"/></symbol>
+ <symbol id="i-ir" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="2"/><circle cx="12" cy="7" r="1.2"/><path d="M10.5 11h3M10.5 14h3M10.5 17h3"/></symbol>
+ <symbol id="i-bt" viewBox="0 0 24 24"><path d="M8.5 8 15.5 16 12 19V5l3.5 3-7 8"/></symbol>
+ <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
+ <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 15l4.5-4.5"/></symbol>
+ <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4"/><rect x="7" y="7" width="10" height="6" rx="2"/><path d="M12 13v8"/></symbol>
+ <symbol id="i-sine" viewBox="0 0 24 24"><path d="M3 12Q6 5 9 12T15 12T21 12"/></symbol>
+ <symbol id="i-radar" viewBox="0 0 24 24"><path d="M12 4a8 8 0 0 1 8 8M12 7.5a4.5 4.5 0 0 1 4.5 4.5"/><path d="M12 12l5.5-3.5"/><circle cx="12" cy="12" r="1"/></symbol>
+ <symbol id="i-bars" viewBox="0 0 24 24"><rect x="4" y="13" width="3.2" height="7" rx=".6" fill="currentColor" stroke="none"/><rect x="10.4" y="9" width="3.2" height="11" rx=".6" fill="currentColor" stroke="none"/><rect x="16.8" y="5" width="3.2" height="15" rx=".6" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-antenna" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.4"/><path d="M12 7.4V20M8.5 20h7M8.8 3a6 6 0 0 0 0 6M15.2 3a6 6 0 0 1 0 6"/></symbol>
+ <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M4.5 9.5a11 11 0 0 1 15 0M7.7 13a6.5 6.5 0 0 1 8.6 0"/><circle cx="12" cy="17" r="1.2"/></symbol>
+ <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M13 14h4"/></symbol>
+ <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2-6 3 12 2-6h7"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+ <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+ <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 8a8 8 0 0 0-14-2M4 16a8 8 0 0 0 14 2"/><path d="M20 4v4h-4M4 20v-4h4"/></symbol>
+ <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 2 2 0 0 0 1.6-3.2 2 2 0 0 1 1.6-3.2H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3z"/><circle cx="7.5" cy="12" r="1"/><circle cx="10" cy="7.8" r="1"/><circle cx="15" cy="8.2" r="1"/></symbol>
+ <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></symbol>
+ <symbol id="i-usb" viewBox="0 0 24 24"><circle cx="12" cy="20" r="1.6"/><path d="M12 18.4V5"/><path d="M12 5 9.6 8h4.8z" fill="currentColor"/><path d="M12 12l4-2.5V7M12 14.5 8 12V9.6"/></symbol>
+ <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/></symbol>
+</defs></svg>
+
+<!-- boot splash: rendered visible, then faded OUT. Never gate content behind an
+     entrance transition -- it will not fire in a headless render. -->
+<div id="splash">
+  <div class="mark">PIP-UI</div>
+  <div class="sub">Boot self-check</div>
+  <div id="bootlist"></div>
+</div>
+
+<div id="app">
+  <header>
+    <button class="iconbtn" id="back" hidden aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+    <div class="plate"><span class="pwr" id="pwr"></span><span id="title">PIP-UI</span></div>
+    <div class="presence" id="presence"></div>
+    <div class="lcd"><div class="spec" id="spec"></div>
+      <div class="lcd-read mono"><span id="lcdCount">0</span> ACTIVE · <span id="lcdClock">--:--</span></div></div>
+    <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
+  </header>
+
+  <main>
+    <section class="view on" id="v-home"></section>
+    <section class="view" id="v-nfc"></section>
+    <section class="view" id="v-library"></section>
+    <section class="view" id="v-ir"></section>
+    <section class="view" id="v-bluetooth"></section>
+    <section class="view" id="v-proxmark"></section>
+    <section class="view" id="v-diag"></section>
+    <section class="view" id="v-pins"></section>
+    <section class="view" id="v-themes"></section>
+  </main>
+</div>
+
+<div id="modal"><div class="box">
+  <h4 id="mTitle">Are you sure?</h4>
+  <p id="mBody"></p>
+  <div class="warn mono" id="mWarn" hidden></div>
+  <div class="btnrow">
+    <button class="btn" id="mNo">Cancel</button>
+    <button class="btn danger" id="mYes">Confirm</button>
+  </div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ===========================================================================
+   7. SMALL HELPERS
+   =========================================================================== */
+const $  = s => document.querySelector(s);
+const el = (h) => { const d = document.createElement("div"); d.innerHTML = h.trim(); return d; };
+const ic = n => `<svg class="ic"><use href="#i-${n}"/></svg>`;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+/* localStorage can throw in a private window or with site data blocked. */
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch {} },
+};
+
+function toast(msg){
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+function fmtUptime(s){
+  if (!s) return "just started";
+  if (s < 60) return `up ${Math.round(s)}s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `up ${m}m` : `up ${Math.floor(m/60)}h ${m%60}m`;
+}
+function ago(iso){
+  if (!iso) return "—";
+  const d = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (d < 60) return "just now";
+  if (d < 3600) return `${Math.floor(d/60)}m ago`;
+  if (d < 86400) return `${Math.floor(d/3600)}h ago`;
+  return `${Math.floor(d/86400)}d ago`;
+}
+
+/* Confirm gate for anything destructive or privileged. */
+function confirmAction({ title, body, detail, confirmLabel = "Confirm" }){
+  return new Promise(resolve => {
+    $("#mTitle").textContent = title;
+    $("#mBody").textContent = body;
+    const warn = $("#mWarn");
+    warn.hidden = !detail;
+    warn.textContent = detail || "";
+    $("#mYes").textContent = confirmLabel;
+    $("#modal").classList.add("on");
+    const done = (ok) => {
+      $("#modal").classList.remove("on");
+      $("#mYes").onclick = $("#mNo").onclick = null;
+      resolve(ok);
+    };
+    $("#mYes").onclick = () => done(true);
+    $("#mNo").onclick  = () => done(false);
+  });
+}
+
+/* ===========================================================================
+   8. API
+   =========================================================================== */
+const state = { health:null, tools:[], toolsErr:"", view:"home", booted:false };
+
+async function api(path, opts){
+  const res = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail || body?.message || `HTTP ${res.status}`);
+  return body;
+}
+
+/* ===========================================================================
+   9. THEMES
+   =========================================================================== */
+const THEMES = [
+  ["instrument","Instrument Face","graphite · amber"],
+  ["night",     "Night Vision",   "mono red · dark-adapted"],
+  ["bench",     "Bench Continuity","teal · matches Tkinter"],
+  ["field",     "High-Contrast",  "white · mascot orange"],
+  ["phosphor",  "Phosphor",       "CRT green"],
+  ["amber",     "Amber CRT",      "mono amber"],
+  ["blueprint", "Blueprint",      "cyan on navy"],
+  ["daylight",  "Daylight",       "light · outdoors"],
+];
+function applyTheme(name){
+  document.documentElement.setAttribute("data-theme", name);
+  store.set("pipui.theme", name);
+}
+/* ?theme=phosphor pins a theme without touching stored state -- handy for a
+   kiosk that should always boot the same way, and for screenshots. */
+const themeParam = new URLSearchParams(location.search).get("theme");
+if (themeParam && THEMES.some(([id]) => id === themeParam)){
+  document.documentElement.setAttribute("data-theme", themeParam);
+} else {
+  applyTheme(store.get("pipui.theme", "instrument"));
+}
+
+/* ===========================================================================
+   10. ROUTER
+   =========================================================================== */
+const TITLES = {
+  home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
+  bluetooth:"Bluetooth", proxmark:"Proxmark3", diag:"Diagnostics",
+  pins:"GPIO Pins", themes:"Themes",
+};
+function go(view, push = true){
+  if (!TITLES[view]) view = "home";
+  state.view = view;
+  for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
+  $("#title").textContent = TITLES[view] || "PIP-UI";
+  $("#back").hidden = view === "home";
+  $("main").scrollTop = 0;
+  // Hash routing so a view survives a reload -- a kiosk that reboots into the
+  // diagnostics screen should come back to it.
+  if (push && location.hash.slice(1) !== view){
+    location.hash = view === "home" ? "" : view;
+  }
+  RENDER[view]?.();
+}
+addEventListener("hashchange", () => go(location.hash.slice(1) || "home", false));
+$("#back").onclick = () => go("home");
+$("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
+
+/* ===========================================================================
+   11. VIEWS
+   =========================================================================== */
+const RENDER = {};
+
+/* ---- home: the tool launcher ------------------------------------------- */
+const CAT_ICON = {
+  "Hardware Tools":"chip", "Software Defined Radio":"sine",
+  "Wi-Fi":"wifi", "System":"terminal",
+};
+
+RENDER.home = () => {
+  const host = $("#v-home");
+  host.innerHTML = "";
+
+  if (state.toolsErr){
+    host.appendChild(el(`<div class="banner bad">${ic("alert")}
+      <div><b>Tool list unavailable.</b><br>${esc(state.toolsErr)}</div></div>`).firstChild);
+  }
+  if (state.health?.simulated){
+    host.appendChild(el(`<div class="banner">${ic("alert")}
+      <div>Simulation mode <b>${esc(state.health.sim_mode)}</b> — hardware readings are synthetic.</div>
+      </div>`).firstChild);
+  }
+  if (!state.tools.length && !state.toolsErr){
+    host.appendChild(el(`<div class="empty">No tools configured.<br>
+      Add entries to <span class="mono">src/web/tools.yaml</span>.</div>`).firstChild);
+    return;
+  }
+
+  const cats = [];
+  const byCat = {};
+  for (const t of state.tools){
+    if (!byCat[t.category]){ byCat[t.category] = []; cats.push(t.category); }
+    byCat[t.category].push(t);
+  }
+  for (const cat of cats){
+    host.appendChild(el(`<div class="sec">${ic(CAT_ICON[cat] || "chip")}
+      <span class="lbl">${esc(cat)}</span><span class="groove"></span></div>`).firstChild);
+    const grid = el(`<div class="grid"></div>`).firstChild;
+    for (const t of byCat[cat]) grid.appendChild(tile(t));
+    host.appendChild(grid);
+  }
+};
+
+function tile(t){
+  const cls = t.kind === "builtin" ? "" : !t.available ? "off" : t.running ? "on" : "";
+  const node = el(`<button class="mod ${cls}">
+    <div class="top">${ic(t.icon)}
+      ${t.kind === "builtin"
+        ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
+        : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
+    </div>
+    <div class="nm">${esc(t.name)}</div>
+    ${t.kind === "builtin"
+      ? `<div class="cmd">on-device</div>`
+      : t.running
+        ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
+        : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
+    ${(!t.available && t.kind !== "builtin") || t.root
+      ? `<div style="position:absolute;top:9px;right:26px">
+           <span class="tag">${!t.available ? "absent" : "root"}</span></div>`
+      : ""}
+  </button>`).firstChild;
+
+  node.onclick = () => {
+    if (t.kind === "builtin") return go(t.view);
+    if (!t.available) return toast(`${t.name} is not installed`);
+    return t.running ? stopTool(t) : launchTool(t);
+  };
+  return node;
+}
+
+async function launchTool(t){
+  if (t.root){
+    const ok = await confirmAction({
+      title:`Launch ${t.name} as root?`,
+      body:"This tool runs with elevated privileges and can change system state or put interfaces into monitor mode.",
+      detail:t.cmd,
+      confirmLabel:"Launch as root",
+    });
+    if (!ok) return;
+  }
+  try {
+    const res = await api(`/api/tools/${encodeURIComponent(t.id)}/launch`, { method:"POST" });
+    state.tools = res.tools || state.tools;
+    toast(res.message);
+    RENDER.home();
+  } catch (e){ toast(e.message); }
+}
+
+async function stopTool(t){
+  const ok = await confirmAction({
+    title:`Stop ${t.name}?`,
+    body:"The process will be terminated. Any unsaved work inside it is lost.",
+    confirmLabel:"Stop",
+  });
+  if (!ok) return;
+  try {
+    const res = await api(`/api/tools/${encodeURIComponent(t.id)}/stop`, { method:"POST" });
+    state.tools = res.tools || state.tools;
+    toast(res.message);
+    RENDER.home();
+  } catch (e){ toast(e.message); }
+}
+
+/* ---- NFC ---------------------------------------------------------------- */
+RENDER.nfc = async () => {
+  const host = $("#v-nfc");
+  host.innerHTML = `<div class="empty">Reading reader status…</div>`;
+  let data;
+  try { data = await api("/api/nfc/recent"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  const r = data.reader;
+  const last = data.recent[0];
+  host.innerHTML = `
+    ${r.degraded ? `<div class="banner bad">${ic("alert")}<div>
+      <b>PN532 unavailable — running the mock reader.</b><br>${esc(r.reason)}</div></div>` : ""}
+    ${!r.polling && r.started ? `<div class="banner">${ic("alert")}
+      <div>Reader started but its poll thread is no longer running.</div></div>` : ""}
+    <div class="two">
+      <div class="panel">
+        <h3>Last tag</h3>
+        ${last ? `<div class="readout">
+            <div class="rl">UID</div>
+            <div class="big">${esc(last.uid)}</div>
+            <div class="chips">${last.technologies.map(x => `<span class="chip">${esc(x)}</span>`).join("")}</div>
+          </div>
+          <div class="row"><span class="k">Type</span><span class="v">${esc(last.tag_type)}</span></div>
+          <div class="row"><span class="k">Seen</span><span class="v dim">${esc(ago(last.seen_at))}</span></div>`
+        : `<div class="empty">No tag read yet.<br>Present a tag, or simulate one below.</div>`}
+        <div class="btnrow">
+          <button class="btn pri" id="simBtn">${ic("play")} Simulate tag</button>
+          <button class="btn" id="libBtn">${ic("card")} Library</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Reader</h3>
+        <div class="row"><span class="k">Requested</span><span class="v">${esc(r.requested)}</span></div>
+        <div class="row"><span class="k">Active</span><span class="v">${esc(r.active)}</span></div>
+        <div class="row"><span class="k">Started</span><span class="v">${r.started ? "yes" : "no"}</span></div>
+        <div class="row"><span class="k">Polling</span><span class="v">${r.polling ? "yes" : "no"}</span></div>
+        <h3 style="margin-top:12px">Recent (${data.recent.length})</h3>
+        ${data.recent.length
+          ? data.recent.slice(0,6).map(t => `<div class="row">
+              <span class="k mono">${esc(t.uid)}</span>
+              <span class="v dim">${esc(ago(t.seen_at))}</span></div>`).join("")
+          : `<div class="empty" style="padding:12px">Nothing yet.</div>`}
+      </div>
+    </div>`;
+
+  $("#libBtn").onclick = () => go("library");
+  $("#simBtn").onclick = async () => {
+    try {
+      const uid = "04" + Array.from({length:12}, () =>
+        "0123456789ABCDEF"[Math.floor(Math.random()*16)]).join("");
+      await api("/api/nfc/simulate", {
+        method:"POST",
+        body: JSON.stringify({ uid, tag_type:"MIFARE Classic 1K" }),
+      });
+      toast("Simulated tag detected");
+      RENDER.nfc();
+    } catch (e){ toast(e.message); }
+  };
+};
+
+/* ---- library ------------------------------------------------------------ */
+RENDER.library = async () => {
+  const host = $("#v-library");
+  host.innerHTML = `<div class="empty">Loading library…</div>`;
+  let data;
+  try { data = await api("/api/library"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  if (!data.count){
+    host.innerHTML = `<div class="empty">The library is empty.<br>
+      Saved tags are stored in <span class="mono">data/library.json</span>.</div>`;
+    return;
+  }
+  host.innerHTML = `<div class="panel"><h3>${data.count} saved tag${data.count === 1 ? "" : "s"}</h3>
+    ${data.profiles.map(p => `<div class="row">
+      <span class="k">${esc(p.friendly_name || "(unnamed)")}</span>
+      <span class="v mono">${esc(p.uid)}</span>
+      <button class="btn danger" data-del="${esc(p.id)}"
+              style="min-height:28px;padding:0 9px">${ic("trash")}</button>
+    </div>`).join("")}</div>`;
+
+  host.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute("data-del");
+      const profile = data.profiles.find(p => p.id === id);
+      const ok = await confirmAction({
+        title:"Delete this tag?",
+        body:"It is removed from the library permanently. This cannot be undone.",
+        detail:`${profile?.friendly_name || ""} ${profile?.uid || ""}`.trim(),
+        confirmLabel:"Delete",
+      });
+      if (!ok) return;
+      try { await api(`/api/library/${encodeURIComponent(id)}`, { method:"DELETE" });
+            toast("Deleted"); RENDER.library(); }
+      catch (e){ toast(e.message); }
+    };
+  });
+};
+
+/* ---- IR ----------------------------------------------------------------- */
+RENDER.ir = async () => {
+  const host = $("#v-ir");
+  host.innerHTML = `<div class="empty">Loading…</div>`;
+  let data;
+  try { data = await api("/api/diagnostics/ir"); } catch { data = { status:"UNKNOWN", summary:"", steps:[] }; }
+  paintIR(host, data, false);
+};
+
+function paintIR(host, data, busy){
+  host.innerHTML = `
+    <div class="panel">
+      <h3>IR self-test</h3>
+      <div class="row"><span class="k">Overall</span>
+        <span class="v"><span class="led lg" data-s="${esc(data.status)}"
+          style="display:inline-block;vertical-align:-1px;margin-right:6px"></span>${esc(data.status)}</span></div>
+      ${(data.steps || []).map(s => `<div class="srow">
+        <span class="led" data-s="${esc(s.status)}"></span>
+        <span class="k">${esc(s.name)}</span>
+        <span class="d">${esc(s.details || s.status)}</span></div>`).join("")}
+      ${!(data.steps || []).length ? `<div class="empty" style="padding:14px">
+        ${busy ? "Running — this takes about twelve seconds." : "Not run yet."}</div>` : ""}
+      <div class="btnrow">
+        <button class="btn pri" id="irRun" ${busy ? "disabled" : ""}>${ic("refresh")}
+          ${busy ? "Running…" : "Run IR self-test"}</button>
+      </div>
+    </div>
+    ${(data.suggested_fixes || []).length ? `<div class="panel"><h3>Suggested fixes</h3>
+      ${data.suggested_fixes.map(f => `<div class="row"><span class="k">${esc(f)}</span></div>`).join("")}
+    </div>` : ""}`;
+
+  const run = $("#irRun");
+  if (run) run.onclick = async () => {
+    paintIR(host, data, true);
+    try {
+      const res = await api("/api/diagnostics/ir", { method:"POST" });
+      paintIR(host, res, false);
+      toast(`IR self-test: ${res.status}`);
+    } catch (e){ paintIR(host, data, false); toast(e.message); }
+  };
+}
+
+/* ---- diagnostics -------------------------------------------------------- */
+RENDER.diag = async () => {
+  const host = $("#v-diag");
+  host.innerHTML = `<div class="empty">Polling hardware…</div>`;
+  let d;
+  try { d = await api("/api/diagnostics"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  const chans = state.health?.channels || [];
+  host.innerHTML = `
+    ${d.simulated ? `<div class="banner">${ic("alert")}<div>
+      Simulation mode <b>${esc(d.sim_mode)}</b> — readings below are synthetic.</div></div>` : ""}
+    <div class="two">
+      <div class="panel"><h3>Channels</h3>
+        ${chans.map(c => `<div class="srow">
+          <span class="led" data-s="${esc(c.status)}"></span>
+          <span class="k">${esc(c.label)}</span>
+          <span class="d">${esc(c.detail)}</span></div>`).join("")
+          || `<div class="empty" style="padding:12px">No channel data.</div>`}
+      </div>
+      <div class="panel"><h3>${ic("usb")} I²C &amp; USB</h3>
+        <div class="row"><span class="k">I²C bus 1</span>
+          <span class="v">${d.i2c.addresses.length ? esc(d.i2c.addresses.join(", ")) : "—"}</span></div>
+        ${!d.i2c.available ? `<div class="srow"><span class="k">Note</span>
+          <span class="d">${esc(d.i2c.detail)}</span></div>` : ""}
+        ${d.usb.devices.map(u => `<div class="srow"><span class="k">${esc(u.kind)}</span>
+          <span class="d">${esc(u.line)}</span></div>`).join("")
+          || `<div class="srow"><span class="k">USB</span><span class="d">${esc(d.usb.detail)}</span></div>`}
+      </div>
+      <div class="panel"><h3>${ic("thermo")} Thermal</h3>
+        <div class="row"><span class="k">CPU temperature</span>
+          <span class="v">${d.thermal.temp_c != null ? esc(d.thermal.temp_c) + " °C" : "—"}</span></div>
+        <div class="row"><span class="k">Throttle register</span>
+          <span class="v">${esc(d.thermal.throttled_raw)}</span></div>
+        ${d.thermal.flags.map(f => `<div class="srow"><span class="led" data-s="WARN"></span>
+          <span class="k">${esc(f)}</span></div>`).join("")
+          || `<div class="row"><span class="k">Flags</span><span class="v dim">none</span></div>`}
+      </div>
+      <div class="panel"><h3>Services &amp; reader</h3>
+        ${Object.entries(d.services).map(([name, s]) => `<div class="srow">
+          <span class="led" data-s="${s.state === "active" ? "PASS" : s.available ? "WARN" : "FAIL"}"></span>
+          <span class="k">${esc(name)}</span><span class="d">${esc(s.state)}</span></div>`).join("")}
+        <div class="row"><span class="k">Reader</span>
+          <span class="v">${esc(d.reader.active)}${d.reader.degraded ? " (degraded)" : ""}</span></div>
+        <div class="row"><span class="k">Polling</span>
+          <span class="v">${d.reader.polling ? "yes" : "no"}</span></div>
+      </div>
+    </div>
+    <div class="btnrow">
+      <button class="btn pri" id="diagRefresh">${ic("refresh")} Refresh</button>
+      <button class="btn" id="diagIR">${ic("ir")} IR self-test</button>
+    </div>`;
+
+  $("#diagRefresh").onclick = async () => {
+    toast("Re-polling…");
+    try { state.health = await api("/api/health/refresh"); paintPresence(); } catch {}
+    RENDER.diag();
+  };
+  $("#diagIR").onclick = () => go("ir");
+};
+
+/* ---- GPIO pins ---------------------------------------------------------- */
+RENDER.pins = async () => {
+  const host = $("#v-pins");
+  host.innerHTML = `<div class="empty">Loading wiring map…</div>`;
+  let d;
+  try { d = await api("/api/pins"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  const left  = d.pins.filter(p => p.side === "left");
+  const right = d.pins.filter(p => p.side === "right");
+  const cell = (p, side) => `
+    <div class="pin ${side} ${p.assigned ? "assigned" : ""} ${p.power ? "rail" : ""} ${p.ground ? "gnd" : ""}"
+         title="${esc(p.label || p.function)}">
+      <span class="no">${p.pin}</span>
+      <span class="nmx">${esc(p.name)}</span>
+      <span class="fn">${esc(p.label || p.function)}</span>
+    </div>`;
+
+  host.innerHTML = `
+    ${!d.configured ? `<div class="banner">${ic("alert")}<div>
+      <b>No wiring configured.</b> Copy
+      <span class="mono">data/pins.example.yaml</span> to
+      <span class="mono">data/pins.yaml</span> and edit it to match your build.
+      ${d.error ? "<br>" + esc(d.error) : ""}</div></div>`
+    : `<div class="banner">${ic("plug")}<div>${d.assigned_count} pin${d.assigned_count === 1 ? "" : "s"}
+      assigned from <span class="mono">data/pins.yaml</span>.</div></div>`}
+    <div class="panel">
+      <h3>40-pin header</h3>
+      <div class="hdr40">
+        <div>${left.map(p => cell(p, "")).join("")}</div>
+        <div class="spine"></div>
+        <div>${right.map(p => cell(p, "r")).join("")}</div>
+      </div>
+    </div>`;
+};
+
+/* ---- stubs: honest about what is not wired yet -------------------------- */
+RENDER.bluetooth = () => {
+  $("#v-bluetooth").innerHTML = `
+    <div class="banner">${ic("alert")}<div>
+      <b>Bluetooth is not wired to this dashboard yet.</b><br>
+      A BlueZ client exists at <span class="mono">src/bluetooth/bluez_client.py</span>, but its
+      subprocess calls have no timeout, so calling it from a request could hang the server.
+      It needs a guarded wrapper before it is exposed here.</div></div>
+    <div class="empty">Use the Tkinter app's Bluetooth screen in the meantime.</div>`;
+};
+RENDER.proxmark = () => {
+  $("#v-proxmark").innerHTML = `
+    <div class="banner">${ic("alert")}<div>
+      <b>The Proxmark client is a stub.</b><br>
+      Every method in <span class="mono">src/proxmark/proxmark_client.py</span> raises
+      <span class="mono">NotImplementedError</span>, so there is nothing to drive yet.</div></div>
+    <div class="empty">Launch the <b>pm3</b> CLI from the Home screen instead,
+      once it is installed.</div>`;
+};
+
+/* ---- themes ------------------------------------------------------------- */
+RENDER.themes = () => {
+  const current = document.documentElement.getAttribute("data-theme");
+  $("#v-themes").innerHTML = `
+    <div class="panel"><h3>Theme</h3>
+      <div class="themes">
+        ${THEMES.map(([id, name, desc]) => `
+          <button class="swatch" data-theme-id="${id}" aria-pressed="${id === current}">
+            <span class="dots" data-theme="${id}" style="padding:2px">
+              <i style="background:var(--accent)"></i>
+              <i style="background:var(--green)"></i>
+              <i style="background:var(--red)"></i>
+              <i style="background:var(--face-hi);box-shadow:inset 0 0 0 1px var(--metal)"></i>
+            </span>
+            <span class="tn">${esc(name)}</span>
+            <span class="td">${esc(desc)}</span>
+          </button>`).join("")}
+      </div>
+      <div class="row" style="margin-top:10px"><span class="k">Saved to this device only</span>
+        <span class="v dim">localStorage</span></div>
+    </div>`;
+
+  $("#v-themes").querySelectorAll("[data-theme-id]").forEach(b => {
+    b.onclick = () => { applyTheme(b.getAttribute("data-theme-id")); RENDER.themes(); };
+  });
+};
+
+/* ===========================================================================
+   12. HEADER STATE + POLLING
+   =========================================================================== */
+const HEADER_CHANNELS = [["pn532","PN532"],["sdr","SDR"],["proxmark","PM3"],["wifi","WIFI"]];
+
+function paintPresence(){
+  const chans = state.health?.channels || [];
+  $("#presence").innerHTML = HEADER_CHANNELS.map(([name, label]) => {
+    const c = chans.find(x => x.name === name);
+    const status = c ? c.status : "idle";
+    return `<span class="pchip" data-on="${c && c.ok ? 1 : 0}" title="${esc(c?.detail || "")}">
+      <i class="led" data-s="${esc(status)}"></i>${label}</span>`;
+  }).join("");
+
+  const overall = state.health?.status;
+  $("#pwr").style.background =
+    overall === "FAIL" ? "var(--red)" : overall === "WARN" ? "var(--accent)" : "var(--green)";
+  $("#lcdCount").textContent = state.tools.filter(t => t.running).length;
+}
+
+const spec = $("#spec");
+for (let i = 0; i < 20; i++){
+  const bar = document.createElement("i");
+  bar.style.height = (18 + ((i * 37) % 62)) + "%";
+  spec.appendChild(bar);
+}
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (!reduceMotion){
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    const live = state.tools.some(t => t.running);
+    for (const bar of spec.children) bar.style.height = (10 + Math.random() * (live ? 78 : 34)) + "%";
+  }, 180);
+}
+const clock = () => {
+  $("#lcdClock").textContent = new Date().toTimeString().slice(0, 5);
+};
+clock();
+setInterval(clock, 20000);
+
+let failures = 0;
+async function poll(){
+  if (document.visibilityState !== "visible") return;
+  try {
+    const [health, tools] = await Promise.all([api("/api/health"), api("/api/tools")]);
+    state.health = health;
+    state.tools = tools.tools || [];
+    state.toolsErr = tools.error || "";
+    failures = 0;
+    paintPresence();
+    if (state.view === "home") RENDER.home();
+  } catch {
+    failures++;
+  }
+}
+
+/* ===========================================================================
+   13. BOOT
+   =========================================================================== */
+async function boot(){
+  const list = $("#bootlist");
+  try {
+    const health = await api("/api/health");
+    state.health = health;
+    list.innerHTML = health.channels.map(c => `<div class="row">
+      <span class="led" data-s="${esc(c.status)}"></span>
+      <span class="k">${esc(c.label)}</span>
+      <span class="v">${esc(c.status)}</span></div>`).join("");
+  } catch (e){
+    list.innerHTML = `<div class="row"><span class="led" data-s="FAIL"></span>
+      <span class="k">Backend unreachable</span><span class="v">FAIL</span></div>`;
+  }
+
+  try {
+    const tools = await api("/api/tools");
+    state.tools = tools.tools || [];
+    state.toolsErr = tools.error || "";
+  } catch {}
+
+  paintPresence();
+  go(location.hash.slice(1) || "home", false);
+
+  // Let the boot result be readable, then fade the splash OUT.
+  setTimeout(() => {
+    $("#splash").classList.add("gone");
+    setTimeout(() => { $("#splash").style.display = "none"; }, 400);
+  }, 900);
+
+  setInterval(poll, 5000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") poll();
+  });
+}
+boot();
+</script>
+</body>
+</html>

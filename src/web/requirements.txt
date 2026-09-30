@@ -1,0 +1,7 @@
+# Web dashboard only. The Tkinter app's deps stay in the root requirements.txt.
+# Plain uvicorn rather than uvicorn[standard]: the extras (uvloop, httptools,
+# watchfiles) buy nothing for a single-user localhost dashboard and are the most
+# likely things to lack wheels on a new Python or on ARM.
+fastapi
+uvicorn
+PyYAML

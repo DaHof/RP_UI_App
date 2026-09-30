@@ -1,0 +1,130 @@
+# PIP-UI tool manifest -- the single source of truth for the dashboard tiles.
+#
+# This file is an ALLOWLIST. The API only ever accepts a tool `id`; nothing from
+# a request reaches a command line. Adding a tool here is therefore a privilege
+# decision, which is why it is config rather than something the UI can do.
+#
+# Fields
+#   id        required, unique. What the API refers to.
+#   name      label on the tile.
+#   icon      sprite symbol id (see static/index.html).
+#   category  groups tiles under a heading, in the order first seen below.
+#   kind      "launch" runs argv; "builtin" opens an in-dashboard view.
+#   view      for kind: builtin -- which screen to open.
+#   argv      MUST be a list, never a string. Passed verbatim, no shell.
+#   note      small print shown on the tile.
+#   root      true marks it as privileged; the UI demands a confirm step.
+#
+# To add your own tool, copy a block and change `id`, `name` and `argv`.
+# A tool whose binary is missing shows as "absent" rather than disappearing,
+# so a typo is visible instead of silent.
+#
+# Note on `sudo` entries: stdin is closed when launching, so a password prompt
+# fails immediately rather than hanging. Passwordless sudo must be configured
+# for these to work.
+
+tools:
+  # ---------------------------------------------------------------- built in
+  - id: nfc
+    name: NFC / RFID
+    icon: card
+    category: Hardware Tools
+    kind: builtin
+    view: nfc
+
+  - id: proxmark
+    name: Proxmark3
+    icon: chip
+    category: Hardware Tools
+    kind: builtin
+    view: proxmark
+
+  - id: ir
+    name: Infrared
+    icon: ir
+    category: Hardware Tools
+    kind: builtin
+    view: ir
+
+  - id: bluetooth
+    name: Bluetooth
+    icon: bt
+    category: Hardware Tools
+    kind: builtin
+    view: bluetooth
+
+  - id: diag
+    name: Diagnostics
+    icon: gauge
+    category: Hardware Tools
+    kind: builtin
+    view: diag
+
+  - id: pins
+    name: GPIO Pins
+    icon: plug
+    category: Hardware Tools
+    kind: builtin
+    view: pins
+
+  # ------------------------------------------------------ software defined radio
+  - id: gnuradio
+    name: GNU Radio
+    icon: sine
+    category: Software Defined Radio
+    argv: ["gnuradio-companion"]
+
+  - id: gqrx
+    name: GQRX
+    icon: radar
+    category: Software Defined Radio
+    argv: ["gqrx"]
+
+  - id: urh
+    name: URH
+    icon: bars
+    category: Software Defined Radio
+    note: Universal Radio Hacker
+    argv: ["urh"]
+
+  - id: sdrangel
+    name: SDRangel
+    icon: antenna
+    category: Software Defined Radio
+    argv: ["sdrangel"]
+
+  - id: rtl433
+    name: rtl_433
+    icon: gauge
+    category: Software Defined Radio
+    note: decodes 433 MHz sensors
+    argv: ["rtl_433"]
+
+  # --------------------------------------------------------------------- wi-fi
+  - id: kismet
+    name: Kismet
+    icon: wifi
+    category: Wi-Fi
+    note: "web UI on :2501"
+    root: true
+    argv: ["sudo", "kismet"]
+
+  - id: wifite
+    name: Wifite
+    icon: wifi
+    category: Wi-Fi
+    root: true
+    argv: ["sudo", "wifite"]
+
+  # -------------------------------------------------------------------- system
+  - id: terminal
+    name: Terminal
+    icon: terminal
+    category: System
+    argv: ["x-terminal-emulator"]
+
+  - id: btop
+    name: System Monitor
+    icon: activity
+    category: System
+    argv: ["x-terminal-emulator", "-e", "btop"]
