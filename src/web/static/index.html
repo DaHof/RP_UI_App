@@ -996,10 +996,13 @@ async function boot(){
   go(location.hash.slice(1) || "home", false);
 
   // Let the boot result be readable, then fade the splash OUT.
+  // A clean boot should get out of the way; a failing one is the whole reason
+  // the splash exists, so it lingers long enough to actually be read.
+  const clean = state.health?.status === "PASS";
   setTimeout(() => {
     $("#splash").classList.add("gone");
     setTimeout(() => { $("#splash").style.display = "none"; }, 400);
-  }, 900);
+  }, clean ? 900 : 2600);
 
   setInterval(poll, 5000);
   document.addEventListener("visibilitychange", () => {
