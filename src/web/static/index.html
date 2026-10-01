@@ -507,6 +507,17 @@ function fmtUptime(s){
   const m = Math.floor(s / 60);
   return m < 60 ? `up ${m}m` : `up ${Math.floor(m/60)}h ${m%60}m`;
 }
+/* The tile's one-line summary: the first sentence of `desc` (the tap-for-more
+   info popover has the rest), falling back to the old per-kind text for any
+   tool someone adds without writing one. `.cmd`'s CSS already clips long text
+   with an ellipsis, but a clean sentence boundary reads better than a
+   mid-clause cutoff. */
+function glanceText(t){
+  if (t.desc) return t.desc.split(/\.\s/)[0].replace(/\.$/, "") + ".";
+  if (t.kind === "builtin") return "on-device";
+  if (t.kind === "link") return t.note || t.url;
+  return t.note || t.cmd;
+}
 function ago(iso){
   if (!iso) return "—";
   const d = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -726,10 +737,8 @@ function tile(t){
       </span>
     </div>
     <div class="nm">${esc(t.name)}</div>
-    ${t.kind === "builtin" ? `<div class="cmd">on-device</div>`
-      : t.kind === "link" ? `<div class="cmd">${esc(t.note || t.url)}</div>`
-      : t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
-      : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
+    ${t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
+      : `<div class="cmd" title="${esc(t.desc || "")}">${esc(glanceText(t))}</div>`}
     ${(!t.available && !passive) || t.root
       ? `<div style="position:absolute;top:9px;right:${t.desc ? 46 : 26}px">
            <span class="tag">${!t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root"}</span></div>`
