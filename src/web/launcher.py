@@ -70,7 +70,8 @@ class Tool:
     argv: tuple[str, ...] = ()
     url: str = ""                   # for link tiles
     note: str = ""
-    desc: str = ""                   # one-line "what does this do" for the UI's info popover
+    short: str = ""                  # always-visible one-liner on the tile itself
+    desc: str = ""                   # longer explanation, shown in the UI's info popover
     root: bool = False
 
     @property
@@ -137,6 +138,7 @@ def load_tools() -> tuple[list[Tool], str]:
                 argv=argv,
                 url=url,
                 note=str(entry.get("note", "")),
+                short=str(entry.get("short", "")),
                 desc=str(entry.get("desc", "")),
                 root=bool(entry.get("root", False)),
             )
@@ -222,6 +224,7 @@ class Launcher:
                     "cmd": " ".join(tool.argv),
                     "url": tool.url,
                     "note": tool.note,
+                    "short": tool.short,
                     "desc": tool.desc,
                     "root": tool.root,
                     "available": self.available(tool),

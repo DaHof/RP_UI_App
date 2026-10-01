@@ -18,7 +18,15 @@
 #             verbatim, no shell.
 #   url       for kind: link -- MUST be a reachable http(s) URL on your LAN.
 #             Never a command, never user-suppliable; it's a hyperlink.
-#   note      small print shown on the tile.
+#   short     the always-visible one-liner on the tile itself. Write this one
+#             tight -- a few words, not a sentence. This is the "at a glance"
+#             text; it is not truncated from `desc`, it's its own thing.
+#   desc      the longer explanation, shown only when the info (i) icon is
+#             tapped. This is where the detail goes -- what it actually does,
+#             caveats, where its own UI lives, etc.
+#   note      small print shown on the tile. Distinct from `short`: a note is
+#             usually a caveat or a pointer (a port number, "edit this"), not
+#             a description of what the tool does.
 #   root      true marks it as privileged; the UI demands a confirm step.
 #
 # To add your own tool, copy a block and change `id`, `name` and `argv`.
@@ -39,6 +47,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: nfc
+    short: Read, save & clone tags
     desc: >-
       Reads 13.56MHz tags with the PN532 reader. Scan a card to see its
       UID/type, save it to your library, and clone or emulate it later.
@@ -49,6 +58,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: proxmark
+    short: RFID/NFC research tool
     desc: >-
       RFID tool covering both low-frequency (125kHz, e.g. key fobs) and
       high-frequency (13.56MHz) cards via a Proxmark3 device. Not wired up
@@ -60,6 +70,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: ir
+    short: Capture & replay remotes
     desc: >-
       Captures and replays IR remote signals (TVs, ACs, etc.) over the
       GPIO-wired transmitter/receiver. Includes a saved-remotes library and
@@ -71,6 +82,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: bluetooth
+    short: Scan, pair & connect
     desc: >-
       Scans for nearby Bluetooth devices and lets you pair, trust, and
       connect to them via BlueZ.
@@ -81,6 +93,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: diag
+    short: Hardware health checks
     desc: >-
       Runs health probes across the hardware (I2C bus, IR, USB devices,
       power/throttling) and reports PASS/WARN/FAIL for each.
@@ -91,6 +104,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: pins
+    short: GPIO wiring reference
     desc: >-
       Shows which GPIO pin each piece of hardware is wired to, so you can
       check or change wiring without digging through the README.
@@ -102,6 +116,7 @@ tools:
     note: HLK-LD2450 on UART (pins 8/10)
     kind: builtin
     view: mmwave
+    short: Live radar target tracking
     desc: >-
       Live presence/position tracking from an HLK-LD2450 radar sensor on
       UART -- shows each detected target's distance, position, and speed.
@@ -112,6 +127,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: settings
+    short: Feature toggles & config
     desc: >-
       Toggle features on/off, set GPIO pin assignments, and control
       logging.
@@ -122,6 +138,7 @@ tools:
     icon: sine
     category: Software Defined Radio
     argv: ["gnuradio-companion"]
+    short: Visual SDR flowgraph builder
     desc: >-
       Visual, drag-and-drop toolkit for building SDR signal-processing
       pipelines from scratch. Flexible but the steepest learning curve of
@@ -132,6 +149,7 @@ tools:
     icon: radar
     category: Software Defined Radio
     argv: ["gqrx"]
+    short: SDR receiver & spectrum view
     desc: >-
       Simple SDR receiver and spectrum analyzer -- tune to a frequency and
       listen or watch the waterfall. Good starting point for "what's on
@@ -143,6 +161,7 @@ tools:
     category: Software Defined Radio
     note: Universal Radio Hacker
     argv: ["urh"]
+    short: Reverse-engineer RF protocols
     desc: >-
       Reverse-engineers unknown wireless protocols: capture a signal,
       decode it into bits, then replay or fuzz it. Popular for garage
@@ -153,6 +172,7 @@ tools:
     icon: antenna
     category: Software Defined Radio
     argv: ["sdrangel"]
+    short: Full SDR receive/transmit suite
     desc: >-
       Full-featured SDR receiver/transmitter suite with lots of built-in
       demodulators, in the same space as GQRX and GNU Radio.
@@ -163,6 +183,7 @@ tools:
     category: Software Defined Radio
     note: decodes 433 MHz sensors
     argv: ["rtl_433"]
+    short: Decodes 433 MHz sensors
     desc: >-
       Decodes data from cheap 433MHz devices -- weather stations,
       tire-pressure sensors, remote switches -- straight to readable
@@ -176,6 +197,7 @@ tools:
     note: "web UI on :2501"
     root: true
     argv: ["sudo", "kismet"]
+    short: Wireless scanner & IDS
     desc: >-
       Passive Wi-Fi/Bluetooth/SDR network detector and packet sniffer --
       lists nearby networks and devices in a web UI on port 2501.
@@ -186,6 +208,7 @@ tools:
     category: Wi-Fi
     root: true
     argv: ["sudo", "wifite"]
+    short: Automated Wi-Fi auditing
     desc: >-
       Automates common Wi-Fi auditing attacks (handshake capture, WPS,
       etc.) against networks you're authorized to test.
@@ -201,6 +224,7 @@ tools:
     kind: link
     note: "WiFi-Sensing-Radar on Kali -- edit host in tools.yaml"
     url: "http://kali.local:8088"
+    short: WiFi presence sensing (Kali)
     desc: >-
       Opens the web UI of a separate "WiFi-Sensing-Radar" app running on
       another machine (a Kali box on your LAN) that senses motion/presence
@@ -213,6 +237,7 @@ tools:
     icon: terminal
     category: System
     argv: ["x-terminal-emulator"]
+    short: Opens a system shell
     desc: "Opens a regular terminal window."
 
   - id: btop
@@ -220,6 +245,7 @@ tools:
     icon: activity
     category: System
     argv: ["x-terminal-emulator", "-e", "btop"]
+    short: CPU/RAM/process monitor
     desc: >-
       Opens btop, a terminal-based resource monitor for CPU, RAM, disk, and
       network usage.
@@ -230,6 +256,7 @@ tools:
     category: System
     note: "scripts/install-tools.sh installs this"
     argv: ["x-terminal-emulator", "-e", "claude"]
+    short: AI coding agent
     desc: >-
       Opens a terminal running the Claude Code CLI, for working on this
       project's own code from the kiosk.

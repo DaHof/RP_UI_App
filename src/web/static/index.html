@@ -507,12 +507,12 @@ function fmtUptime(s){
   const m = Math.floor(s / 60);
   return m < 60 ? `up ${m}m` : `up ${Math.floor(m/60)}h ${m%60}m`;
 }
-/* The tile's one-line summary: the first sentence of `desc` (the tap-for-more
-   info popover has the rest), falling back to the old per-kind text for any
-   tool someone adds without writing one. `.cmd`'s CSS already clips long text
-   with an ellipsis, but a clean sentence boundary reads better than a
-   mid-clause cutoff. */
+/* The tile's one-line summary. `short` is written to be tight on its own --
+   not derived from `desc`, which is the longer text behind the info tap.
+   Falls back to the first sentence of `desc`, then the old per-kind text, for
+   any tool added without writing a `short`. */
 function glanceText(t){
+  if (t.short) return t.short;
   if (t.desc) return t.desc.split(/\.\s/)[0].replace(/\.$/, "") + ".";
   if (t.kind === "builtin") return "on-device";
   if (t.kind === "link") return t.note || t.url;
