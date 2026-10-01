@@ -1948,16 +1948,53 @@ async function btPower(on){
   } catch (e){ paintBluetooth(e.message); }
 }
 
-/* ---- stubs: honest about what is not wired yet -------------------------- */
-RENDER.proxmark = () => {
-  $("#v-proxmark").innerHTML = `
-    <div class="banner">${ic("alert")}<div>
-      <b>The Proxmark client is a stub.</b><br>
-      Every method in <span class="mono">src/proxmark/proxmark_client.py</span> raises
-      <span class="mono">NotImplementedError</span>, so there is nothing to drive yet.</div></div>
-    <div class="empty">Launch the <b>pm3</b> CLI from the Home screen instead,
-      once it is installed.</div>`;
+/* ---- Proxmark3: Connect/Device Info, LF/HF search ------------------------
+   Clone/Write/Sniff/Script are still stubs in the Tkinter screen too (see
+   src/ui/app.py's ProxmarkScreen), so there is nothing real to port for
+   those yet -- this wires up only Connection + Read. */
+const pmState = { status: null, lastOutput: "" };
+
+RENDER.proxmark = async () => {
+  try { pmState.status = await api("/api/pm3/status"); } catch { pmState.status = null; }
+  paintProxmark();
 };
+
+function paintProxmark(message){
+  const s = pmState.status;
+  $("#v-proxmark").innerHTML = `
+    ${message ? `<div class="banner">${ic("alert")}<div>${esc(message)}</div></div>` : ""}
+    <div class="panel">
+      <div class="row"><span class="k">Device</span>
+        <span class="v">${s?.connected ? "Connected" : "Not connected"}</span></div>
+      ${s?.port ? `<div class="row"><span class="k">Port</span><span class="v mono">${esc(s.port)}</span></div>` : ""}
+      ${!s?.connected ? `<div class="srow"><span class="k">Note</span>
+        <span class="d">${esc(s?.detail || "No Proxmark3 detected")}</span></div>` : ""}
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn pri" id="pmRefresh">${ic("refresh")} Device info</button>
+        <button class="btn" id="pmLF">LF search</button>
+        <button class="btn" id="pmHF">HF search</button>
+      </div>
+    </div>
+    <div class="panel"><h3>Output</h3>
+      <pre class="mono" style="white-space:pre-wrap;margin:0">${esc(pmState.lastOutput || s?.raw || "No output yet.")}</pre>
+    </div>`;
+
+  $("#pmRefresh").onclick = async () => {
+    paintProxmark("Checking for a Proxmark3…");
+    try { pmState.status = await api("/api/pm3/status"); paintProxmark(); }
+    catch (e){ paintProxmark(e.message); }
+  };
+  const search = async (path, label) => {
+    paintProxmark(`Running ${label}…`);
+    try {
+      const res = await api(path, { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      paintProxmark(res.message === "ok" ? "" : res.message);
+    } catch (e){ paintProxmark(e.message); }
+  };
+  $("#pmLF").onclick = () => search("/api/pm3/read/lf", "LF search");
+  $("#pmHF").onclick = () => search("/api/pm3/read/hf", "HF search");
+}
 
 /* ---- themes ------------------------------------------------------------- */
 RENDER.themes = () => {

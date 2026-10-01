@@ -61,8 +61,9 @@ tools:
     short: RFID/NFC research tool
     desc: >-
       RFID tool covering both low-frequency (125kHz, e.g. key fobs) and
-      high-frequency (13.56MHz) cards via a Proxmark3 device. Not wired up
-      yet -- the backend is a stub, so this tile doesn't do anything real.
+      high-frequency (13.56MHz) cards via a Proxmark3 device over USB.
+      Device info and LF/HF search are wired up to the real `proxmark3`
+      client; clone, write, and sniff are not implemented yet.
 
   - id: ir
     name: Infrared

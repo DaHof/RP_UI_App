@@ -1,8 +1,8 @@
 {
   "Scan": false,
   "IR": true,
-  "Bluetooth": false,
+  "Bluetooth": true,
   "WiFi": false,
-  "Proxmark": false,
+  "Proxmark": true,
   "log_enabled": true
 }

@@ -41,6 +41,7 @@ import irweb  # noqa: E402
 import mmwave  # noqa: E402
 import paths  # noqa: E402
 import pins as pins_module  # noqa: E402
+import pmweb  # noqa: E402
 import probes  # noqa: E402
 import settings as settings_module  # noqa: E402
 import shell  # noqa: E402
@@ -440,6 +441,34 @@ async def ir_remote(name: str):
 async def ir_delete_remote(name: str):
     await run_in_threadpool(irweb.service.delete_remote, name)
     return {"ok": True, "name": name}
+
+
+# ---------------------------------------------------------------------------
+# Proxmark3: Connect/Device Info and LF/HF search -- the real part of the
+# Tkinter screen's "Connection" and "Read" groups. Clone/Write/Sniff/Script
+# are still just status-label stubs there too, so there is nothing to port
+# for those yet.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/pm3/status")
+async def pm3_status():
+    return await run_in_threadpool(pmweb.device_info)
+
+
+@app.post("/api/pm3/read/lf")
+async def pm3_read_lf():
+    ok, message, raw = await run_in_threadpool(pmweb.read_lf)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw}
+
+
+@app.post("/api/pm3/read/hf")
+async def pm3_read_hf():
+    ok, message, raw = await run_in_threadpool(pmweb.read_hf)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw}
 
 
 # ---------------------------------------------------------------------------
