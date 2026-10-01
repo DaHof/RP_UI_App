@@ -159,7 +159,7 @@ async def get_tools():
         "configured": not launcher.error,
         "error": launcher.error,
         "simulated": sim.active(),
-        "tools": launcher.as_dicts(),
+        "tools": await run_in_threadpool(launcher.as_dicts),
     }
 
 

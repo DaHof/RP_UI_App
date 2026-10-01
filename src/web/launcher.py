@@ -28,13 +28,21 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import paths
 import sim
+
+# How long a link tile's reachability result is trusted before re-probing, and
+# how long the probe itself is allowed to block -- short, since /api/tools is
+# polled on a timer and a slow/unreachable host must not stall the dashboard.
+_LINK_CACHE_TTL = 15.0
+_LINK_CONNECT_TIMEOUT = 0.5
 
 try:
     import yaml
@@ -140,6 +148,7 @@ class Launcher:
         self._running: dict[str, Running] = {}
         self._tools: list[Tool] = []
         self._error = ""
+        self._link_cache: dict[str, tuple[float, bool]] = {}
         self.reload()
 
     def reload(self) -> None:
@@ -160,11 +169,36 @@ class Launcher:
             for tool_id in [k for k, v in self._running.items() if v.process.poll() is not None]:
                 self._running.pop(tool_id, None)
 
+    def _link_reachable(self, tool: Tool) -> bool:
+        """TCP-probe a link tile's host, cached -- a dead remote app should grey
+        the tile out instead of always showing available and failing on click.
+        """
+        now = time.monotonic()
+        cached = self._link_cache.get(tool.id)
+        if cached is not None and now - cached[0] < _LINK_CACHE_TTL:
+            return cached[1]
+
+        parsed = urlparse(tool.url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        reachable = False
+        if host:
+            try:
+                with socket.create_connection((host, port), timeout=_LINK_CONNECT_TIMEOUT):
+                    reachable = True
+            except OSError:
+                reachable = False
+
+        self._link_cache[tool.id] = (now, reachable)
+        return reachable
+
     def available(self, tool: Tool) -> bool:
-        if tool.kind in ("builtin", "link"):
+        if tool.kind == "builtin":
             return True
         if sim.active():
             return sim.mode() != "fail"
+        if tool.kind == "link":
+            return self._link_reachable(tool)
         return shutil.which(tool.binary) is not None
 
     def as_dicts(self) -> list[dict]:

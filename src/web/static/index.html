@@ -689,7 +689,7 @@ RENDER.home = () => {
 };
 
 function tile(t){
-  const passive = t.kind === "builtin" || t.kind === "link";
+  const passive = t.kind === "builtin";
   const cls = passive ? "" : !t.available ? "off" : t.running ? "on" : "";
   const node = el(`<button class="mod ${cls}">
     <div class="top">${ic(t.icon)}
@@ -704,13 +704,16 @@ function tile(t){
       : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
     ${(!t.available && !passive) || t.root
       ? `<div style="position:absolute;top:9px;right:26px">
-           <span class="tag">${!t.available ? "absent" : "root"}</span></div>`
+           <span class="tag">${!t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root"}</span></div>`
       : ""}
   </button>`).firstChild;
 
   node.onclick = () => {
     if (t.kind === "builtin") return go(t.view);
-    if (t.kind === "link") return window.open(t.url, "_blank", "noopener");
+    if (t.kind === "link") {
+      if (!t.available) return toast(`${t.name} is unreachable`);
+      return window.open(t.url, "_blank", "noopener");
+    }
     if (!t.available) return toast(`${t.name} is not installed`);
     return t.running ? stopTool(t) : launchTool(t);
   };
