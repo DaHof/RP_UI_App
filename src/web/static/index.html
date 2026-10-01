@@ -1807,6 +1807,7 @@ async function boot(){
   try { state.settings = await api("/api/settings"); } catch {}
 
   paintPresence();
+  paintSpec();
   go(routeFromHash(), false);
 
   // Let the boot result be readable, then fade the splash OUT.
