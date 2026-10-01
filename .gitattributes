@@ -1,0 +1,8 @@
+# These are authored on Windows but only ever run on the Pi. Without this they
+# check out with CRLF and Linux fails them at the shebang:
+#   /usr/bin/env: 'bash\r': No such file or directory
+*.sh        text eol=lf
+*.service   text eol=lf
+*.desktop   text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf

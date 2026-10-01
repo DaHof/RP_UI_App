@@ -93,9 +93,17 @@ html,body{height:100%;margin:0}
 body{
   font-family:var(--font-ui);font-size:13px;color:var(--ink);
   -webkit-user-select:none;user-select:none;overflow:hidden;
+  /* Kiosk hardening: no pull-to-refresh or rubber-band at the scroll edges,
+     and no 300ms double-tap-zoom delay on taps. */
+  overscroll-behavior:none;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
   background:repeating-linear-gradient(90deg,var(--pin) 0 1px,transparent 1px 3px),
              linear-gradient(180deg,var(--bg1),var(--bg2));
 }
+/* Chromium --kiosk still shows a pointer; ?kiosk=1 hides it without needing
+   unclutter installed. */
+body.kiosk,body.kiosk *{cursor:none}
 #app{height:100%;display:flex;flex-direction:column}
 .mono{font-family:var(--font-mono)}
 svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;
@@ -385,6 +393,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.5"/></symbol>
  <symbol id="i-usb" viewBox="0 0 24 24"><circle cx="12" cy="20" r="1.6"/><path d="M12 18.4V5"/><path d="M12 5 9.6 8h4.8z" fill="currentColor"/><path d="M12 12l4-2.5V7M12 14.5 8 12V9.6"/></symbol>
  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/></symbol>
+ <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+ <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
 </defs></svg>
 
 <!-- boot splash: rendered visible, then faded OUT. Never gate content behind an
@@ -402,6 +412,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
     <div class="presence" id="presence"></div>
     <div class="lcd"><div class="spec" id="spec"></div>
       <div class="lcd-read mono"><span id="lcdCount">0</span> ACTIVE · <span id="lcdClock">--:--</span></div></div>
+    <button class="iconbtn" id="fsBtn" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
   </header>
 
@@ -564,6 +575,31 @@ function routeFromHash(){
 addEventListener("hashchange", () => go(routeFromHash(), false));
 $("#back").onclick = () => go("home");
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
+
+/* ---- fullscreen / kiosk -------------------------------------------------
+   Chromium --kiosk is the real answer on the Pi (see scripts/kiosk.sh); this
+   button covers every other way the page gets opened: a normal browser window
+   on the Pi, or a laptop on the same desk. */
+function paintFsIcon(){
+  $("#fsBtn").querySelector("use")
+    .setAttribute("href", document.fullscreenElement ? "#i-collapse" : "#i-expand");
+}
+$("#fsBtn").onclick = async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+  } catch (e){
+    toast("Fullscreen refused: " + e.message);
+  }
+};
+document.addEventListener("fullscreenchange", paintFsIcon);
+
+// ?kiosk=1 hides the pointer without needing unclutter installed.
+if (new URLSearchParams(location.search).has("kiosk")) document.body.classList.add("kiosk");
+
+// A long press would otherwise raise the browser context menu on top of a
+// kiosk that has no chrome to dismiss it with.
+addEventListener("contextmenu", e => e.preventDefault());
 
 /* ===========================================================================
    11. VIEWS

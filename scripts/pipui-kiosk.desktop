@@ -1,0 +1,25 @@
+# Autostart the kiosk when the desktop session starts.
+#
+# Install (per user, no sudo):
+#   mkdir -p ~/.config/autostart
+#   sed "s|%REPO%|$HOME/RP_UI_App|g" scripts/pipui-kiosk.desktop \
+#     > ~/.config/autostart/pipui-kiosk.desktop
+#
+# This is the XDG autostart path, honoured by LXDE/LXQt, XFCE, GNOME and
+# labwc/wayfire on current Raspberry Pi OS. On a Lite image with no desktop
+# session there is nothing to autostart into -- start it from ~/.bash_profile
+# after your own X/Wayland launch instead.
+#
+# To stop it autostarting: rm ~/.config/autostart/pipui-kiosk.desktop
+
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=PIP-UI Kiosk
+Comment=RF toolbox dashboard, full screen
+Exec=%REPO%/scripts/kiosk.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true
+# Give the desktop and the touchscreen a moment to settle before Chromium
+# claims the display.
+X-GNOME-Autostart-Delay=5

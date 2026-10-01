@@ -166,5 +166,68 @@ python3 src/main.py
 
 
 
+## Web dashboard
+
+A second front end lives in `src/web/` — a FastAPI app serving a single
+self-contained page. It shares the engine with the Tkinter app and does not
+modify it; both can run at the same time (though only one can hold the I2C bus
+if you are using the real PN532).
+
+```bash
+python3 -m pip install -r src/web/requirements.txt
+python3 src/web/app.py                      # http://127.0.0.1:8080
+```
+
+It binds `127.0.0.1` only. The mock PN532 reader is the default, so everything
+works with no hardware attached.
+
+### Simulation mode
+
+Nearly every probe the dashboard runs (`i2cdetect`, `vcgencmd`, `rtl_test`,
+`pm3`, `iw`) only exists on a Pi. `PIPUI_SIM` feeds canned output through the
+real parsers so the UI can be driven anywhere:
+
+```bash
+PIPUI_SIM=mixed python3 src/web/app.py      # off | pass | fail | mixed
+```
+
+### Run full screen (kiosk)
+
+```bash
+sudo apt-get install -y chromium-browser unclutter
+./scripts/kiosk.sh
+```
+
+`scripts/kiosk.sh` starts the backend if nothing is already answering, waits
+for it to come up (otherwise Chromium races the server and shows an error page
+that `--kiosk` gives you no way to reload), disables screen blanking, and
+launches Chromium full screen with a dedicated profile. Press **Ctrl+Alt+F2**
+or ssh in to get out; `Alt+F4` closes it.
+
+There is also a fullscreen button in the dashboard header, for when the page is
+opened in an ordinary browser window or from a laptop.
+
+**Start it on boot.** The two halves install separately, so you can run the API
+as a service without committing to kiosk mode:
+
+```bash
+# backend as a systemd service
+sed -e "s|%USER%|$USER|g" -e "s|%REPO%|$HOME/RP_UI_App|g" \
+    scripts/pipui-web.service | sudo tee /etc/systemd/system/pipui-web.service
+sudo systemctl daemon-reload && sudo systemctl enable --now pipui-web
+
+# browser on desktop login
+mkdir -p ~/.config/autostart
+sed "s|%REPO%|$HOME/RP_UI_App|g" scripts/pipui-kiosk.desktop \
+  > ~/.config/autostart/pipui-kiosk.desktop
+```
+
+Both files carry their own install notes. Nothing autostarts the Tkinter app,
+so adding the kiosk will not clash with it — but do not autostart both, since
+they would fight over the touchscreen.
+
+Logs: `journalctl -u pipui-web -f`.
+
+
 https://docs.flipper.net/zero/sub-ghz/read
 https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/main/infrared/resources/infrared/assets/tv.ir

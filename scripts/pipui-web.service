@@ -1,0 +1,44 @@
+# PIP-UI backend as a systemd service.
+#
+# This unit runs the API only -- no display needed -- so it is safe to enable
+# even if you are not using kiosk mode. The browser is started separately (see
+# scripts/kiosk.sh and scripts/pipui-kiosk.desktop).
+#
+# Install, replacing pi/paths to match your device:
+#
+#   sed -e "s|%USER%|$USER|g" -e "s|%REPO%|$HOME/RP_UI_App|g" \
+#       scripts/pipui-web.service | sudo tee /etc/systemd/system/pipui-web.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pipui-web
+#   systemctl status pipui-web
+#
+# Logs:  journalctl -u pipui-web -f
+
+[Unit]
+Description=PIP-UI web dashboard
+Documentation=file://%REPO%/README.md
+After=network.target
+
+[Service]
+Type=simple
+User=%USER%
+WorkingDirectory=%REPO%
+ExecStart=%REPO%/.venv/bin/python3 %REPO%/src/web/app.py
+Environment=PIPUI_PORT=8080
+# Uncomment to drive the UI with synthetic hardware readings:
+# Environment=PIPUI_SIM=mixed
+# Uncomment to use the real PN532 instead of the mock reader. The service user
+# needs i2c group membership, and the Tkinter app must not be holding the bus.
+# Environment=PN532_READER=adafruit
+
+Restart=on-failure
+RestartSec=3
+
+# The dashboard binds 127.0.0.1 only, but these cost nothing and limit the
+# blast radius if that ever changes.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
