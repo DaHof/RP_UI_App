@@ -118,9 +118,12 @@ For Raspberry Pi GPIO-based IR, add the overlays in `/boot/config.txt` (or the r
 config for your image) and reboot:
 
 ```ini
-dtoverlay=gpio-ir,gpio_pin=16
-dtoverlay=gpio-ir-tx,gpio_pin=12
+dtoverlay=gpio-ir,gpio_pin=23
+dtoverlay=gpio-ir-tx,gpio_pin=18
 ```
+
+(`gpio_pin` wants the BCM GPIO number from the wiring table above -- GPIO23
+for the receiver, GPIO18 for the transmitter -- not the header pin number.)
 
 After rebooting, confirm the LIRC device node is present:
 
@@ -176,6 +179,20 @@ curl -fsSL https://raw.githubusercontent.com/DaHof/RP_UI_App/main/scripts/setup-
 Every step checks before it acts, so it's also safe to re-run later. See its
 own header for what each step does, and for running it against a fork or a
 non-default branch.
+
+`setup-pi.sh` only installs the dashboard process -- it deliberately does not
+touch the external tools the tiles launch (GNU Radio, Kismet, GQRX, ...),
+which otherwise show as "absent" until installed. `scripts/install-tools.sh`
+covers those in one pass, including Kismet/Wifite (monitor mode, deauth,
+cracking -- a deliberate `sudo` run, not something bundled silently) and the
+I2C/IR/Bluetooth system enablement the builtin tiles need:
+
+```bash
+sudo ./scripts/install-tools.sh
+```
+
+See its own header for exactly what it installs and what it skips (Proxmark3
+is built from source upstream, not apt-installed here).
 
 ### Updating
 
