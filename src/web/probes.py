@@ -229,6 +229,18 @@ def _probe_wifiscan() -> tuple[str, str]:
     return PASS, f"{len(snap['networks'])} network(s) seen on {snap['iface']}"
 
 
+def _probe_lanscan() -> tuple[str, str]:
+    snap = wifiscan.lan_service.snapshot()
+    if snap["error"]:
+        hint = " -- see scripts/install-tools.sh's setcap step" if "permission" in snap["error"].lower() else ""
+        return FAIL, f"{snap['error']}{hint}"
+    if not snap["updated_at"]:
+        return WARN, "Not scanned yet"
+    if not snap["devices"]:
+        return WARN, "Scan ran but found no devices"
+    return PASS, f"{len(snap['devices'])} device(s) on the LAN"
+
+
 def _probe_thermal() -> tuple[str, str]:
     temp_result = shell.run(["vcgencmd", "measure_temp"], timeout=2.0)
     if temp_result.unsupported or temp_result.missing:
@@ -270,6 +282,7 @@ PROBES: tuple[Probe, ...] = (
     Probe("proxmark", "Proxmark3", _probe_proxmark, SLOW),
     Probe("wifi", "Wi-Fi monitor", _probe_wifi, SLOW),
     Probe("wifiscan", "Wi-Fi scanner", _probe_wifiscan, FAST),
+    Probe("lanscan", "LAN devices", _probe_lanscan, FAST),
 )
 
 BY_NAME = {p.name: p for p in PROBES}

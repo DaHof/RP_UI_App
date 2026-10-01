@@ -247,6 +247,31 @@ async def wifiscan_scan():
     return result
 
 
+@app.get("/api/wifiscan/lan")
+async def wifiscan_lan():
+    return wifiscan.lan_service.snapshot()
+
+
+@app.post("/api/wifiscan/lan/scan")
+async def wifiscan_lan_scan():
+    result = await run_in_threadpool(wifiscan.lan_service.scan)
+    if result is None:
+        raise HTTPException(status_code=409, detail="A LAN scan is already running")
+    return result
+
+
+@app.get("/api/wifiscan/clients/{bssid}")
+async def wifiscan_client_status(bssid: str):
+    return wifiscan.client_service.status(bssid)
+
+
+@app.post("/api/wifiscan/clients/{bssid}/capture")
+async def wifiscan_client_capture(bssid: str, channel: int | None = None):
+    """Blocks for ~CLIENT_CAPTURE_SECONDS -- this is a bounded packet
+    capture, not a quick query, same shape as the scan endpoints above."""
+    return await run_in_threadpool(wifiscan.client_service.capture, bssid, channel)
+
+
 @app.get("/api/library")
 async def get_library():
     with _store_lock:

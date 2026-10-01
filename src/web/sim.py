@@ -128,6 +128,21 @@ BSS de:ad:be:ef:00:04(on wlan0)
 
 _IW_SCAN_DENIED = "command failed: Operation not permitted (-1)"
 
+# `arp-scan --localnet` output -- a router, a phone-shaped vendor, and an
+# unknown-vendor device, covering the three cells the LAN list actually
+# renders differently (named vendor, named vendor, "Unknown").
+_ARP_SCAN_SAMPLE = """\
+Interface: wlan0, type: EN10MB, MAC: b8:27:eb:12:34:56, IPv4: 192.168.1.50
+Starting arp-scan 1.10.0 with 254 hosts (https://github.com/royhills/arp-scan)
+192.168.1.1\taa:bb:cc:11:22:01\tNetgear
+192.168.1.20\t11:22:33:44:55:02\tApple, Inc.
+192.168.1.45\tde:ad:be:ef:00:03\t(Unknown)
+
+3 packets received by filter, 0 packets dropped by kernel
+Ending arp-scan 1.10.0: 254 hosts scanned in 2.012 seconds (126.33 hosts/sec). 3 responded"""
+
+_ARP_SCAN_DENIED = "arp-scan: pcap_open_live: eth0: You don't have permission to capture on that device"
+
 
 def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
     """Canned ``(returncode, stdout, stderr)`` keyed by the binary name."""
@@ -143,6 +158,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "irsend": (127, "", "Command not found."),
             "ir-ctl": (127, "", "Command not found."),
             "bluetoothctl": (127, "", "Command not found."),
+            "arp-scan": (1, "", _ARP_SCAN_DENIED),
         }
     if mode_name == "mixed":
         return {
@@ -157,6 +173,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "irsend": (0, "", ""),
             "ir-ctl": (0, "", ""),
             "bluetoothctl": (0, "", ""),
+            "arp-scan": (0, _ARP_SCAN_SAMPLE, ""),
         }
     # "pass"
     return {
@@ -170,6 +187,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
         "irsend": (0, "", ""),
         "ir-ctl": (0, "", ""),
         "bluetoothctl": (0, "", ""),
+        "arp-scan": (0, _ARP_SCAN_SAMPLE, ""),
     }
 
 

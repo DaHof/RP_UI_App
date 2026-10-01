@@ -255,6 +255,13 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .mod .info:hover,.mod .info:active{color:var(--ink);background:rgba(127,127,127,.15)}
 .tag{font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);
   border:1px solid var(--metal);border-radius:3px;padding:0 3px;white-space:nowrap}
+.tag.warn{color:var(--red);border-color:var(--red)}
+
+/* ---- scanner: inline signal-history bars, same technique as the header's
+   CPU history (#spec), just small enough to sit in a list row. ---- */
+.mini-spark{display:inline-flex;align-items:flex-end;gap:1px;height:14px;width:36px;
+  vertical-align:middle;flex:none}
+.mini-spark i{flex:1;background:var(--ink-faint);border-radius:1px 1px 0 0;min-height:1px}
 
 /* ---- buttons ---- */
 .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
@@ -630,6 +637,7 @@ function go(view, push = true){
   // a view nobody is looking at.
   if (state.view === "ir" && view !== "ir") stopIRTimers();
   if (state.view === "mmwave" && view !== "mmwave") stopRadarTimer();
+  if (state.view === "wifiscan" && view !== "wifiscan") stopWsAutoRefresh();
   state.view = view;
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
@@ -1566,41 +1574,73 @@ RENDER.mmwave = async () => {
   }, 150);
 };
 
-/* ---- Wi-Fi network scanner ------------------------------------------------
-   A plain managed-mode scan, not Kismet's monitor-mode capture -- SSIDs and
-   signal strength, no client tracking. Scanning blocks server-side for a few
-   seconds and the POST response *is* the result, so there's no poll loop
-   here the way mmWave/IR need -- just a button and a loading state. */
+/* ---- Wi-Fi network scanner / LAN devices ---------------------------------
+   Two tabs sharing one view: AP scan (managed-mode `iw`) and LAN devices
+   (`arp-scan` -- a different, non-Wi-Fi-specific capability: who's on this
+   subnet, full stop). Both block server-side for the duration of their scan
+   and the POST response *is* the result, so there's no poll loop the way
+   mmWave/IR need -- just a button and a loading state. Auto-refresh is the
+   one exception: a client-side timer re-running the same POST.
+
+   Per-AP client capture (the monitor-mode piece) is nested under each
+   network row rather than a third tab, since it's scoped to one AP, not a
+   standing view of its own. */
+const WS_TABS = [["ap","Wi-Fi"], ["lan","LAN Devices"]];
+const WS_CAPTURE_SECONDS = 8; // matches wifiscan.py's CLIENT_CAPTURE_SECONDS
+const WS_AUTO_INTERVAL_MS = 30000;
+const WS_FLAG_LABEL = { open:"open", "weak-encryption":"WEP", "duplicate-ssid":"dup SSID" };
+const wsState = { tab:"ap", autoRefresh:false, autoTimer:null, openClients:null };
+
+function stopWsAutoRefresh(){
+  clearInterval(wsState.autoTimer);
+  wsState.autoTimer = null;
+}
 function signalTier(dbm){
   if (dbm >= -60) return "PASS";
   if (dbm >= -75) return "WARN";
   return "FAIL";
 }
-
-function paintNetworks(snap){
-  const list = $("#wsList");
-  const hdr = $("#wsHdr");
-  if (!list) return;
-  hdr.textContent = `Networks (${snap.networks.length})`;
-  list.innerHTML = snap.networks.length
-    ? snap.networks.map(n => `
-        <div class="row">
-          <span class="led" data-s="${signalTier(n.signal_dbm)}" title="${n.signal_dbm} dBm"></span>
-          <span class="k">${esc(n.ssid)}</span>
-          <span class="v dim mono">${n.band} · ch ${n.channel ?? "?"}</span>
-          <span class="chip" style="margin-left:8px">${esc(n.security)}</span>
-        </div>`).join("")
-    : `<div class="empty" style="padding:12px">${snap.updated_at ? "Scan ran, nothing found." : "Not scanned yet."}</div>`;
+function safeId(bssid){ return bssid.replace(/[^a-z0-9]/gi, ""); }
+function sparkline(history){
+  if (!history || history.length < 2) return "";
+  const lo = -90, hi = -30; // clamp range: -30 excellent, -90 unusable
+  const bars = history.map(v => {
+    const pct = Math.max(4, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+    return `<i style="height:${pct}%"></i>`;
+  }).join("");
+  return `<span class="mini-spark" title="last ${history.length} reading(s), oldest to newest">${bars}</span>`;
 }
 
-RENDER.wifiscan = async () => {
+RENDER.wifiscan = () => {
   const host = $("#v-wifiscan");
-  host.innerHTML = `<div class="empty">Loading last scan…</div>`;
+  host.innerHTML = `
+    <div class="tabs" id="wsTabs">
+      ${WS_TABS.map(([id,label]) =>
+        `<button data-t="${id}" aria-selected="${wsState.tab === id}">${label}</button>`).join("")}
+    </div>
+    <div id="wsBody"><div class="empty">Loading…</div></div>`;
+  host.querySelectorAll("#wsTabs button").forEach(b => {
+    b.onclick = () => {
+      stopWsAutoRefresh();
+      wsState.tab = b.dataset.t;
+      wsState.openClients = null;
+      RENDER.wifiscan();
+    };
+  });
+  WS_PANES[wsState.tab]();
+};
+
+const WS_PANES = {};
+
+/* ---- Wi-Fi tab ---- */
+WS_PANES.ap = async () => {
+  const body = $("#wsBody");
+  body.innerHTML = `<div class="empty">Loading last scan…</div>`;
   let snap;
   try { snap = await api("/api/wifiscan/networks"); }
-  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+  catch (e){ body.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
 
-  host.innerHTML = `
+  body.innerHTML = `
     ${snap.error ? `<div class="banner bad">${ic("alert")}<div>
       <b>Last scan failed.</b><br>${esc(snap.error)}</div></div>` : ""}
     <div class="panel">
@@ -1609,22 +1649,153 @@ RENDER.wifiscan = async () => {
       </div>
       <div class="btnrow">
         <button class="btn pri" id="wsScanBtn">${ic("refresh")} Scan now</button>
+        <label class="row" style="border-bottom:0;width:auto;gap:7px;padding:0 0 0 4px">
+          <input type="checkbox" id="wsAuto" ${wsState.autoRefresh ? "checked" : ""}>
+          <span class="k">Auto-refresh (30s)</span>
+        </label>
       </div>
     </div>
     <div class="panel">
       <h3 id="wsHdr">Networks (${snap.networks.length})</h3>
       <div id="wsList"></div>
     </div>`;
-  paintNetworks(snap);
+  paintApList(snap);
 
-  $("#wsScanBtn").onclick = async () => {
-    const btn = $("#wsScanBtn");
+  $("#wsScanBtn").onclick = () => runApScan($("#wsScanBtn"));
+  $("#wsAuto").onchange = (e) => {
+    wsState.autoRefresh = e.target.checked;
+    stopWsAutoRefresh();
+    if (wsState.autoRefresh) wsState.autoTimer = setInterval(() => runApScan(null), WS_AUTO_INTERVAL_MS);
+  };
+  if (wsState.autoRefresh) wsState.autoTimer = setInterval(() => runApScan(null), WS_AUTO_INTERVAL_MS);
+};
+
+async function runApScan(btn){
+  if (btn){ btn.disabled = true; btn.innerHTML = `${ic("refresh")} Scanning…`; }
+  try {
+    const result = await api("/api/wifiscan/scan", { method: "POST" });
+    paintApList(result);
+    if (btn) toast(result.error || `Found ${result.networks.length} network(s)`);
+  } catch (e){
+    if (btn) toast(e.message);
+  } finally {
+    if (btn){ btn.disabled = false; btn.innerHTML = `${ic("refresh")} Scan now`; }
+  }
+}
+
+function paintApList(snap){
+  const list = $("#wsList");
+  const hdr = $("#wsHdr");
+  if (!list) return;
+  hdr.textContent = `Networks (${snap.networks.length})`;
+  list.innerHTML = snap.networks.length
+    ? snap.networks.map(n => {
+        const open = wsState.openClients === n.bssid;
+        return `
+        <div class="wsNet">
+          <div class="row" style="border-bottom:0">
+            <span class="led" data-s="${signalTier(n.signal_dbm)}" title="${n.signal_dbm} dBm"></span>
+            <span class="k">${esc(n.ssid)}</span>
+            <span class="chip">${esc(n.security)}</span>
+            ${(n.flags || []).map(f => `<span class="tag warn">${esc(WS_FLAG_LABEL[f] || f)}</span>`).join("")}
+            <span class="v dim mono">${n.signal_dbm} dBm</span>
+          </div>
+          <div class="row" style="padding-top:0">
+            <span class="v dim mono">${n.band} · ch ${n.channel ?? "?"}</span>
+            ${sparkline(n.history)}
+            <button class="btn" style="min-height:26px;padding:0 10px;font-size:10px;margin-left:auto"
+              data-clients="${esc(n.bssid)}" data-channel="${n.channel ?? ""}">${open ? "Hide" : "Clients"}</button>
+          </div>
+          <div class="wsClients" id="wc-${safeId(n.bssid)}" ${open ? "" : "hidden"}></div>
+        </div>`;
+      }).join("")
+    : `<div class="empty" style="padding:12px">${snap.updated_at ? "Scan ran, nothing found." : "Not scanned yet."}</div>`;
+
+  list.querySelectorAll("[data-clients]").forEach(btn => {
+    btn.onclick = () => toggleClients(btn, btn.dataset.clients, btn.dataset.channel ? Number(btn.dataset.channel) : null);
+  });
+}
+
+async function toggleClients(btn, bssid, channel){
+  const box = $(`#wc-${safeId(bssid)}`);
+  if (!box) return;
+  if (wsState.openClients === bssid){
+    wsState.openClients = null;
+    box.hidden = true;
+    btn.textContent = "Clients";
+    return;
+  }
+  wsState.openClients = bssid;
+  box.hidden = false;
+  btn.textContent = "Hide";
+  box.innerHTML = `<div class="empty" style="padding:8px">Loading…</div>`;
+
+  let status;
+  try { status = await api(`/api/wifiscan/clients/${encodeURIComponent(bssid)}`); }
+  catch (e){ box.innerHTML = `<div class="empty" style="padding:8px">${esc(e.message)}</div>`; return; }
+  paintClientBox(box, bssid, channel, status);
+}
+
+function paintClientBox(box, bssid, channel, status){
+  if (status.error){
+    box.innerHTML = `<div class="warn mono" style="padding:8px 0;white-space:pre-wrap">${esc(status.error)}</div>`;
+    return;
+  }
+  const btnId = `wcCap-${safeId(bssid)}`;
+  box.innerHTML = `
+    <div class="btnrow" style="margin:4px 0">
+      <button class="btn" id="${btnId}">${ic("refresh")} Capture (${WS_CAPTURE_SECONDS}s)</button>
+    </div>
+    ${status.clients.length
+      ? status.clients.map(c => `<div class="row">
+          <span class="k mono">${esc(c.mac)}</span>
+          <span class="v dim mono">${c.power_dbm ?? "?"} dBm</span></div>`).join("")
+      : `<div class="empty" style="padding:8px">No capture yet.</div>`}`;
+
+  $(`#${btnId}`).onclick = async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    b.innerHTML = `${ic("refresh")} Capturing (${WS_CAPTURE_SECONDS}s)…`;
+    try {
+      const qs = channel ? `?channel=${channel}` : "";
+      const result = await api(`/api/wifiscan/clients/${encodeURIComponent(bssid)}/capture${qs}`, { method: "POST" });
+      paintClientBox(box, bssid, channel, result);
+    } catch (e){ toast(e.message); b.disabled = false; b.innerHTML = `${ic("refresh")} Capture (${WS_CAPTURE_SECONDS}s)`; }
+  };
+}
+
+/* ---- LAN Devices tab ------------------------------------------------------
+   Not Wi-Fi specific -- an ARP sweep of whatever subnet this device is on,
+   Ethernet included. */
+WS_PANES.lan = async () => {
+  const body = $("#wsBody");
+  body.innerHTML = `<div class="empty">Loading last scan…</div>`;
+  let snap;
+  try { snap = await api("/api/wifiscan/lan"); }
+  catch (e){ body.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  body.innerHTML = `
+    ${snap.error ? `<div class="banner bad">${ic("alert")}<div>
+      <b>Last scan failed.</b><br>${esc(snap.error)}</div></div>` : ""}
+    <div class="panel">
+      <div class="btnrow">
+        <button class="btn pri" id="wsLanScanBtn">${ic("refresh")} Scan now</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 id="wsLanHdr">Devices (${snap.devices.length})</h3>
+      <div id="wsLanList"></div>
+    </div>`;
+  paintLanList(snap);
+
+  $("#wsLanScanBtn").onclick = async () => {
+    const btn = $("#wsLanScanBtn");
     btn.disabled = true;
     btn.innerHTML = `${ic("refresh")} Scanning…`;
     try {
-      const result = await api("/api/wifiscan/scan", { method: "POST" });
-      paintNetworks(result);
-      toast(result.error || `Found ${result.networks.length} network(s)`);
+      const result = await api("/api/wifiscan/lan/scan", { method: "POST" });
+      paintLanList(result);
+      toast(result.error || `Found ${result.devices.length} device(s)`);
     } catch (e){
       toast(e.message);
     } finally {
@@ -1633,6 +1804,21 @@ RENDER.wifiscan = async () => {
     }
   };
 };
+
+function paintLanList(snap){
+  const list = $("#wsLanList");
+  const hdr = $("#wsLanHdr");
+  if (!list) return;
+  hdr.textContent = `Devices (${snap.devices.length})`;
+  list.innerHTML = snap.devices.length
+    ? snap.devices.map(d => `
+        <div class="row">
+          <span class="k mono">${esc(d.ip)}</span>
+          <span class="v dim mono">${esc(d.mac)}</span>
+          <span class="v dim" style="margin-left:8px">${esc(d.hostname || d.vendor)}</span>
+        </div>`).join("")
+    : `<div class="empty" style="padding:12px">${snap.updated_at ? "Scan ran, nothing found." : "Not scanned yet."}</div>`;
+}
 
 /* ---- Bluetooth: Discovery, Pairing, Connection consolidated into one screen.
    Tkinter splits this across six tabs, but half of them -- Test Audio, Library's

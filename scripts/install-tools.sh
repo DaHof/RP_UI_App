@@ -12,11 +12,15 @@
 #                        which is why this script asks for it explicitly
 #                        rather than being folded into setup-pi.sh)
 #   - Hardware enablement: i2c-tools + I2C overlay (PN532), lirc + IR overlays
-#                        (the two IR modules), bluez (Bluetooth), iw +
-#                        CAP_NET_ADMIN via setcap (the Network Scanner tile),
-#                        group membership for i2c/gpio/dialout/bluetooth (the
-#                        last one is what lets the LD2450 mmWave reader open
-#                        /dev/serial0 without root)
+#                        (the two IR modules), bluez (Bluetooth), iw + arp-scan
+#                        with CAP_NET_ADMIN/CAP_NET_RAW via setcap (the
+#                        Network Scanner tile's AP and LAN-device scans),
+#                        aircrack-ng (that tile's per-AP client capture, gated
+#                        behind WIFI_MONITOR_IFACE rather than a capability
+#                        grant -- see wifiscan.py), group membership for
+#                        i2c/gpio/dialout/bluetooth (the last one is what lets
+#                        the LD2450 mmWave reader open /dev/serial0 without
+#                        root)
 #   - Kiosk deps:        chromium, unclutter
 #   - btop, a terminal emulator (whatever provides x-terminal-emulator)
 #   - Claude Code CLI:   Node.js 20.x (via NodeSource, if nothing recent is
@@ -68,20 +72,30 @@ apt_install i2c-tools
 apt_install lirc
 apt_install bluez bluez-tools pulseaudio-module-bluetooth
 apt_install iw
+apt_install arp-scan
+apt_install aircrack-ng
 
 usermod -aG i2c,gpio,dialout,bluetooth "$REAL_USER" 2>/dev/null || true
 
-# Lets the Network Scanner tile (src/web/wifiscan.py) trigger `iw scan` as the
-# dashboard's normal non-root user -- without this it fails with "Operation
-# not permitted". Scoped to the iw binary only, not a blanket sudo rule.
-IW_BIN="$(readlink -f "$(command -v iw)" 2>/dev/null || true)"
-if [ -n "$IW_BIN" ]; then
-  setcap cap_net_admin,cap_net_raw+eip "$IW_BIN" \
-    && echo "Granted CAP_NET_ADMIN to $IW_BIN for Wi-Fi scanning." \
-    || FAILED+=("setcap on $IW_BIN")
-else
-  FAILED+=("setcap (iw not found -- install iw/wireless-tools first)")
-fi
+# Lets the Network Scanner tile (src/web/wifiscan.py) trigger `iw scan` and
+# `arp-scan` as the dashboard's normal non-root user -- without this they
+# fail with "Operation not permitted". Scoped to those two binaries, not a
+# blanket sudo rule. (aircrack-ng's per-AP client capture, the same module's
+# third capability, is gated behind WIFI_MONITOR_IFACE instead of a
+# capability grant -- see wifiscan.py's docstring for why.)
+grant_cap(){
+  local bin
+  bin="$(readlink -f "$(command -v "$1")" 2>/dev/null || true)"
+  if [ -n "$bin" ]; then
+    setcap "$2" "$bin" \
+      && echo "Granted $2 to $bin." \
+      || FAILED+=("setcap on $bin")
+  else
+    FAILED+=("setcap ($1 not found)")
+  fi
+}
+grant_cap iw cap_net_admin,cap_net_raw+eip
+grant_cap arp-scan cap_net_raw+eip
 
 CONFIG_TXT=/boot/firmware/config.txt
 [ -f "$CONFIG_TXT" ] || CONFIG_TXT=/boot/config.txt
