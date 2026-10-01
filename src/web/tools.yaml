@@ -163,3 +163,10 @@ tools:
     icon: activity
     category: System
     argv: ["x-terminal-emulator", "-e", "btop"]
+
+  - id: claude-code
+    name: Claude Code
+    icon: terminal
+    category: System
+    note: "scripts/install-tools.sh installs this"
+    argv: ["x-terminal-emulator", "-e", "claude"]

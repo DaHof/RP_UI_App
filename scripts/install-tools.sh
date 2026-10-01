@@ -18,6 +18,9 @@
 #                        /dev/serial0 without root)
 #   - Kiosk deps:        chromium, unclutter
 #   - btop, a terminal emulator (whatever provides x-terminal-emulator)
+#   - Claude Code CLI:   Node.js 20.x (via NodeSource, if nothing recent is
+#                        already there) + `npm install -g @anthropic-ai/claude-code`.
+#                        Skipped on 32-bit ARM -- no build exists for it.
 #
 # NOT covered: Proxmark3. The Iceman client is built from source against a
 # specific firmware, not a simple apt package -- see
@@ -91,6 +94,33 @@ apt_install chromium unclutter || apt_install chromium-browser unclutter
 # --- 5. misc tiles ---------------------------------------------------------------
 apt_install btop
 command -v x-terminal-emulator >/dev/null 2>&1 || apt_install xterm
+
+# --- 6. Claude Code CLI ----------------------------------------------------------
+# Needs a current Node -- Raspberry Pi OS's own nodejs package is usually too
+# old, so this pulls Node 20.x from NodeSource if nothing recent is already
+# there. No build exists for 32-bit ARM (armv7l/armhf, still the default on
+# some older Pi images), so this is skipped rather than installed broken --
+# a 64-bit image (aarch64) is needed for it.
+ARCH="$(uname -m)"
+if [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
+  echo "Skipping Claude Code -- no build for 32-bit ARM ($ARCH). Needs a 64-bit (aarch64) OS."
+else
+  NODE_MAJOR="$(command -v node >/dev/null 2>&1 && node -v | sed -E 's/^v([0-9]+).*/\1/')"
+  if [ -z "${NODE_MAJOR:-}" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "Installing Node.js 20.x (NodeSource) for Claude Code..."
+    if curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; then
+      apt_install nodejs
+    else
+      FAILED+=("nodejs (NodeSource setup script failed)")
+    fi
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    echo "Installing Claude Code CLI..."
+    npm install -g @anthropic-ai/claude-code || FAILED+=("@anthropic-ai/claude-code (npm)")
+  else
+    FAILED+=("@anthropic-ai/claude-code (no npm available)")
+  fi
+fi
 
 echo
 if [ "${#FAILED[@]}" -gt 0 ]; then
