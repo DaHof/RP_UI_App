@@ -248,6 +248,39 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 [data-theme="night"] .btn.pri{background:transparent;color:var(--accent);
   border:1px solid var(--accent)}
 
+/* ---- sub-nav inside a view (mirrors the Tkinter IR tabs) ---- */
+.tabs{display:flex;gap:4px;margin-bottom:10px;padding:3px;border-radius:7px;
+  background:var(--recess);border:1px solid var(--metal-lo)}
+.tabs button{flex:1;min-height:32px;border:0;border-radius:5px;cursor:pointer;font:inherit;
+  font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--ink-dim);background:transparent}
+.tabs button[aria-selected="true"]{color:var(--on-accent);background:var(--accent)}
+[data-theme="night"] .tabs button[aria-selected="true"]{color:var(--accent);
+  background:transparent;box-shadow:inset 0 0 0 1px var(--accent)}
+
+input[type="text"],input[type="search"],select{font:inherit;font-size:12px;color:var(--ink);
+  background:var(--recess);border:1px solid var(--metal);border-radius:6px;
+  padding:8px 10px;min-height:36px;width:100%}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-2px}
+input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
+
+.progress{height:8px;border-radius:4px;background:var(--recess);overflow:hidden;
+  border:1px solid var(--metal-lo);margin:9px 0}
+.progress i{display:block;height:100%;background:var(--accent);transition:width .18s linear}
+
+.list{max-height:228px;overflow-y:auto;margin-top:2px}
+.listitem{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;
+  font-size:12px;color:var(--ink);cursor:pointer;padding:7px 8px;border:0;
+  border-bottom:1px solid var(--metal-lo);background:transparent}
+.listitem .sub2{margin-left:auto;font-size:10px;color:var(--ink-faint);
+  font-family:var(--font-mono);white-space:nowrap}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px}
+.pill{min-height:34px;padding:0 10px;border-radius:6px;cursor:pointer;font:inherit;
+  font-size:11.5px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
+  border:1px solid var(--metal);border-top-color:var(--metal-hi)}
+.pill[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.pill[disabled]{opacity:.4;cursor:not-allowed}
+
 .banner{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--accent);
   background:var(--recess);border:1px solid var(--metal);border-radius:7px;
   padding:10px 12px;margin-bottom:10px;line-height:1.4}
@@ -505,6 +538,9 @@ const TITLES = {
 };
 function go(view, push = true){
   if (!TITLES[view]) view = "home";
+  // Leaving IR must stop its sweep/capture pollers, or they keep firing against
+  // a view nobody is looking at.
+  if (state.view === "ir" && view !== "ir") stopIRTimers();
   state.view = view;
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
@@ -512,12 +548,20 @@ function go(view, push = true){
   $("main").scrollTop = 0;
   // Hash routing so a view survives a reload -- a kiosk that reboots into the
   // diagnostics screen should come back to it.
-  if (push && location.hash.slice(1) !== view){
-    location.hash = view === "home" ? "" : view;
+  const target = view === "ir" ? `ir/${irState.tab}` : view;
+  if (push && location.hash.slice(1) !== target){
+    location.hash = view === "home" ? "" : target;
   }
   RENDER[view]?.();
 }
-addEventListener("hashchange", () => go(location.hash.slice(1) || "home", false));
+
+/* "#ir/saved" selects a view and its sub-tab. */
+function routeFromHash(){
+  const [view, sub] = location.hash.slice(1).split("/");
+  if (view === "ir" && sub && IR_TABS.some(([id]) => id === sub)) irState.tab = sub;
+  return view || "home";
+}
+addEventListener("hashchange", () => go(routeFromHash(), false));
 $("#back").onclick = () => go("home");
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
 
@@ -728,12 +772,358 @@ RENDER.library = async () => {
 };
 
 /* ---- IR ----------------------------------------------------------------- */
-RENDER.ir = async () => {
+const IR_TABS = [
+  ["universal","Universal"], ["saved","Saved"], ["learn","Learn"],
+  ["settings","Settings"], ["selftest","Self-test"],
+];
+const irState = {
+  tab:"universal", device:"TV", devices:[], buttons:[], button:"",
+  category:"", query:"", remote:null, scanTimer:null, capTimer:null,
+};
+
+function stopIRTimers(){
+  clearInterval(irState.scanTimer); irState.scanTimer = null;
+  clearInterval(irState.capTimer);  irState.capTimer  = null;
+}
+
+RENDER.ir = () => {
   const host = $("#v-ir");
-  host.innerHTML = `<div class="empty">Loading…</div>`;
+  host.innerHTML = `
+    <div class="tabs" id="irTabs">
+      ${IR_TABS.map(([id,label]) =>
+        `<button data-t="${id}" aria-selected="${irState.tab === id}">${label}</button>`).join("")}
+    </div>
+    <div id="irBody"><div class="empty">Loading…</div></div>`;
+  host.querySelectorAll("#irTabs button").forEach(b => {
+    b.onclick = () => {
+      stopIRTimers();
+      irState.tab = b.dataset.t;
+      irState.remote = null;
+      location.hash = `ir/${irState.tab}`;
+      RENDER.ir();
+    };
+  });
+  IR_PANES[irState.tab]();
+};
+
+const IR_PANES = {};
+
+/* ---- IR / Universal: fire one button at every known model --------------- */
+IR_PANES.universal = async () => {
+  const body = $("#irBody");
+  if (!irState.devices.length){
+    try { irState.devices = (await api("/api/ir/universal")).devices || []; } catch {}
+  }
+  let info = { models:0, buttons:[] };
+  try { info = await api(`/api/ir/universal/${encodeURIComponent(irState.device)}`); } catch {}
+  irState.buttons = info.buttons || [];
+  if (!irState.buttons.some(b => b.name === irState.button)) irState.button = "";
+
+  body.innerHTML = `
+    <div class="panel">
+      <h3>Device</h3>
+      <div class="grid2">
+        ${irState.devices.map(d => `<button class="pill" data-dev="${esc(d.id)}"
+            aria-pressed="${d.id === irState.device}" ${d.available ? "" : "disabled"}
+            title="${d.available ? "" : "missing " + esc(d.file)}">${esc(d.id)}</button>`).join("")}
+      </div>
+      <div class="row" style="margin-top:8px"><span class="k">Known codes</span>
+        <span class="v">${info.models || 0} models · ${irState.buttons.length} buttons</span></div>
+    </div>
+
+    <div class="panel">
+      <h3>Button</h3>
+      ${irState.buttons.length ? `<div class="grid2">
+        ${irState.buttons.map(b => `<button class="pill" data-btn="${esc(b.name)}"
+            aria-pressed="${b.name === irState.button}">${esc(b.name)}
+            <span style="opacity:.6"> ${b.models}</span></button>`).join("")}
+      </div>` : `<div class="empty" style="padding:14px">
+        No universal library for this device.</div>`}
+      <div id="sweepBox"></div>
+    </div>`;
+
+  body.querySelectorAll("[data-dev]").forEach(b => {
+    b.onclick = () => { irState.device = b.dataset.dev; irState.button = ""; IR_PANES.universal(); };
+  });
+  body.querySelectorAll("[data-btn]").forEach(b => {
+    b.onclick = () => { irState.button = b.dataset.btn; paintSweep(); };
+  });
+  paintSweep();
+};
+
+async function paintSweep(state){
+  const box = $("#sweepBox");
+  if (!box) return;
+  if (!state){
+    try { state = await api("/api/ir/universal/scan"); } catch { state = { running:false }; }
+  }
+  const selected = irState.button;
+  const pct = state.total ? Math.round((state.index / state.total) * 100) : 0;
+
+  box.innerHTML = state.running
+    ? `<div class="progress"><i style="width:${pct}%"></i></div>
+       <div class="row"><span class="k">${esc(state.button)} · ${state.index}/${state.total}</span>
+         <span class="v">${esc(state.current_model || "")}</span></div>
+       <div class="btnrow"><button class="btn danger" id="sweepCancel">${ic("stop")} Stop sweep</button></div>`
+    : `${state.total && (state.cancelled || state.finished_at) ? `<div class="row">
+         <span class="k">Last sweep</span><span class="v dim">${esc(state.button)} ·
+         ${state.sent} sent${state.failed ? ` · ${state.failed} failed` : ""}${
+           state.cancelled ? " · stopped" : ""}</span></div>` : ""}
+       <div class="btnrow">
+         <button class="btn pri" id="sweepGo" ${selected ? "" : "disabled"}>${ic("play")}
+           ${selected ? `Sweep "${esc(selected)}" across all models` : "Pick a button first"}</button>
+       </div>
+       ${selected ? `<div class="row"><span class="k">Point the emitter at the device.
+         It stops when the device reacts.</span></div>` : ""}`;
+
+  const go = $("#sweepGo");
+  if (go) go.onclick = async () => {
+    try {
+      const res = await api("/api/ir/universal/scan", {
+        method:"POST",
+        body: JSON.stringify({ device: irState.device, button: irState.button }),
+      });
+      toast(res.message);
+      paintSweep(res.state);
+      irState.scanTimer = setInterval(async () => {
+        try {
+          const s = await api("/api/ir/universal/scan");
+          paintSweep(s);
+          if (!s.running){ clearInterval(irState.scanTimer); irState.scanTimer = null; }
+        } catch { clearInterval(irState.scanTimer); irState.scanTimer = null; }
+      }, 600);
+    } catch (e){ toast(e.message); }
+  };
+  const cancel = $("#sweepCancel");
+  if (cancel) cancel.onclick = async () => {
+    try { const r = await api("/api/ir/universal/scan/cancel", { method:"POST" });
+          stopIRTimers(); paintSweep(r.state); toast("Sweep stopped"); }
+    catch (e){ toast(e.message); }
+  };
+}
+
+/* ---- IR / Saved remotes ------------------------------------------------- */
+IR_PANES.saved = async () => {
+  const body = $("#irBody");
+  if (irState.remote) return paintRemote();
+
+  let cats = [];
+  try { cats = (await api("/api/ir/categories")).categories || []; } catch {}
+  let listing = { total:0, remotes:[] };
+  try {
+    listing = await api(`/api/ir/remotes?category=${encodeURIComponent(irState.category)}`
+      + `&q=${encodeURIComponent(irState.query)}&limit=200`);
+  } catch {}
+
+  body.innerHTML = `
+    <div class="panel">
+      <div class="two" style="gap:8px">
+        <select id="irCat">
+          <option value="">All categories (${cats.reduce((a,c) => a + c.count, 0)})</option>
+          ${cats.map(c => `<option value="${esc(c.name)}"
+            ${c.name === irState.category ? "selected" : ""}>${esc(c.name)} (${c.count})</option>`).join("")}
+        </select>
+        <input type="search" id="irSearch" placeholder="Search remotes…"
+               value="${esc(irState.query)}">
+      </div>
+      <div class="row" style="margin-top:8px"><span class="k">Matches</span>
+        <span class="v">${listing.total}${listing.total > listing.remotes.length
+          ? ` (showing ${listing.remotes.length})` : ""}</span></div>
+      <div class="list">
+        ${listing.remotes.map(r => `<button class="listitem" data-remote="${esc(r.name)}">
+          ${ic("ir")}<span>${esc(r.label)}</span>
+          <span class="sub2">${esc(r.name.split("/").slice(0,-1).join(" / "))}</span></button>`).join("")
+          || `<div class="empty">No remotes match.</div>`}
+      </div>
+    </div>`;
+
+  $("#irCat").onchange = e => { irState.category = e.target.value; IR_PANES.saved(); };
+  let debounce;
+  $("#irSearch").oninput = e => {
+    clearTimeout(debounce);
+    const value = e.target.value;
+    debounce = setTimeout(() => { irState.query = value; IR_PANES.saved(); }, 260);
+  };
+  body.querySelectorAll("[data-remote]").forEach(b => {
+    b.onclick = async () => {
+      try { irState.remote = await api(`/api/ir/remotes/${b.dataset.remote}`); paintRemote(); }
+      catch (e){ toast(e.message); }
+    };
+  });
+};
+
+function paintRemote(){
+  const r = irState.remote;
+  $("#irBody").innerHTML = `
+    <div class="panel">
+      <div class="btnrow" style="margin:0 0 10px">
+        <button class="btn" id="backList">${ic("back")} All remotes</button>
+        <button class="btn danger" id="delRemote">${ic("trash")} Delete</button>
+      </div>
+      <h3>${esc(r.name)} · ${r.count} signal${r.count === 1 ? "" : "s"}</h3>
+      <div class="list">
+        ${r.signals.map((s, i) => `<button class="listitem" data-send="${i}">
+          ${ic("play")}<span>${esc(s.name)}</span>
+          <span class="sub2">${esc(s.protocol || s.type)}${
+            s.address ? " " + esc(s.address.split(" ")[0]) : ""}</span></button>`).join("")
+          || `<div class="empty">This file has no signals.</div>`}
+      </div>
+    </div>`;
+
+  $("#backList").onclick = () => { irState.remote = null; IR_PANES.saved(); };
+  $("#delRemote").onclick = async () => {
+    const ok = await confirmAction({
+      title:"Delete this remote?",
+      body:"The .ir file is removed from the library permanently.",
+      detail:r.name, confirmLabel:"Delete",
+    });
+    if (!ok) return;
+    try { await api(`/api/ir/remotes/${r.name}`, { method:"DELETE" });
+          toast("Deleted"); irState.remote = null; IR_PANES.saved(); }
+    catch (e){ toast(e.message); }
+  };
+  $("#irBody").querySelectorAll("[data-send]").forEach(b => {
+    b.onclick = async () => {
+      try {
+        const res = await api("/api/ir/send", {
+          method:"POST",
+          body: JSON.stringify({ remote: r.name, index: Number(b.dataset.send) }),
+        });
+        toast(res.message);
+      } catch (e){ toast(e.message); }
+    };
+  });
+}
+
+/* ---- IR / Learn --------------------------------------------------------- */
+IR_PANES.learn = async () => {
+  let state = { running:false, result:null, error:"" };
+  try { state = await api("/api/ir/capture"); } catch {}
+  paintLearn(state);
+};
+
+function paintLearn(state){
+  const body = $("#irBody");
+  if (!body) return;
+  const r = state.result;
+  body.innerHTML = `
+    <div class="panel">
+      <h3>Learn a new remote</h3>
+      ${state.running
+        ? `<div class="empty" style="padding:18px">Point the remote at the receiver
+             and press a button.<br><b>${state.elapsed || 0}s</b> elapsed — gives up at 12s.</div>
+           <div class="progress"><i style="width:${Math.min(100,(state.elapsed/12)*100)}%"></i></div>
+           <div class="btnrow"><button class="btn danger" id="capCancel">${ic("stop")} Cancel</button></div>`
+        : r
+          ? `<div class="readout">
+               <div class="rl">Captured${r.simulated ? " (simulated)" : ""}</div>
+               <div class="big">${esc(r.protocol || r.signal_type || "raw")}</div>
+               <div class="chips">
+                 ${r.address ? `<span class="chip">addr ${esc(r.address)}</span>` : ""}
+                 ${r.command ? `<span class="chip">cmd ${esc(r.command)}</span>` : ""}
+                 ${r.data_len ? `<span class="chip">${r.data_len} edges</span>` : ""}
+               </div>
+             </div>
+             <div class="btnrow">
+               <input type="text" id="capName" placeholder="Name, e.g. LivingRoom/TV"
+                      style="flex:1;min-width:150px">
+               <button class="btn pri" id="capSave">${ic("save")} Save</button>
+               <button class="btn" id="capAgain">${ic("refresh")} Again</button>
+             </div>`
+          : `${state.error ? `<div class="banner bad">${ic("alert")}
+               <div>${esc(state.error)}</div></div>` : ""}
+             <div class="empty" style="padding:18px">
+               Capture reads from the LIRC RX device for up to 12 seconds.</div>
+             <div class="btnrow"><button class="btn pri" id="capGo">${ic("play")}
+               Start capture</button></div>`}
+    </div>`;
+
+  const go = $("#capGo");
+  if (go) go.onclick = async () => {
+    try {
+      await api("/api/ir/capture", { method:"POST" });
+      paintLearn({ running:true, elapsed:0 });
+      irState.capTimer = setInterval(async () => {
+        try {
+          const s = await api("/api/ir/capture");
+          paintLearn(s);
+          if (!s.running){ clearInterval(irState.capTimer); irState.capTimer = null; }
+        } catch { clearInterval(irState.capTimer); irState.capTimer = null; }
+      }, 700);
+    } catch (e){ toast(e.message); }
+  };
+  const cancel = $("#capCancel");
+  if (cancel) cancel.onclick = async () => {
+    try { await api("/api/ir/capture/cancel", { method:"POST" }); stopIRTimers(); IR_PANES.learn(); }
+    catch (e){ toast(e.message); }
+  };
+  const again = $("#capAgain");
+  if (again) again.onclick = () => { paintLearn({ running:false, result:null }); };
+  const save = $("#capSave");
+  if (save) save.onclick = async () => {
+    const name = $("#capName").value.trim();
+    if (!name) return toast("Give the remote a name first");
+    try {
+      const res = await api("/api/ir/capture/save", {
+        method:"POST", body: JSON.stringify({ name }),
+      });
+      toast(`Saved as ${res.name}`);
+      irState.tab = "saved"; irState.remote = null; RENDER.ir();
+    } catch (e){ toast(e.message); }
+  };
+}
+
+/* ---- IR / Settings ------------------------------------------------------ */
+IR_PANES.settings = async () => {
+  const body = $("#irBody");
+  let s = {};
+  try { s = await api("/api/ir/settings"); } catch {}
+
+  body.innerHTML = `
+    <div class="panel">
+      <h3>Transmit</h3>
+      <div class="row"><span class="k">TX device</span>
+        <span class="v">${esc(s.tx_device || "none found")}</span></div>
+      <div class="row"><span class="k">Universal sweep delay</span>
+        <span class="v" id="delayOut">${Number(s.universal_delay ?? 0.2).toFixed(1)} s</span></div>
+      <input type="range" id="delay" min="0" max="4" step="0.1"
+             value="${Number(s.universal_delay ?? 0.2)}">
+      <div class="row"><span class="k">Gap between models during a sweep</span></div>
+    </div>
+    <div class="panel">
+      <h3>Receive</h3>
+      <div class="row"><span class="k">RX device</span></div>
+      <input type="text" id="rxdev" placeholder="/dev/lirc1" value="${esc(s.rx_device || "")}">
+      <div class="btnrow"><button class="btn pri" id="saveIR">${ic("save")} Save</button></div>
+    </div>
+    <div class="banner">${ic("alert")}<div>
+      The Tkinter app's <b>IR TX/RX pin</b> fields are not written to disk
+      (<span class="mono">src/ui/app.py:524</span>), so they reset to
+      <span class="mono">GPIO18</span>/<span class="mono">GPIO23</span> on every restart.
+      Wiring you want to keep belongs in <span class="mono">data/pins.yaml</span>.</div></div>`;
+
+  const delay = $("#delay");
+  delay.oninput = () => { $("#delayOut").textContent = Number(delay.value).toFixed(1) + " s"; };
+  $("#saveIR").onclick = async () => {
+    try {
+      await api("/api/ir/settings", {
+        method:"PUT",
+        body: JSON.stringify({
+          universal_delay: Number(delay.value),
+          rx_device: $("#rxdev").value,
+        }),
+      });
+      toast("IR settings saved");
+    } catch (e){ toast(e.message); }
+  };
+};
+
+/* ---- IR / Self-test ----------------------------------------------------- */
+IR_PANES.selftest = async () => {
   let data;
-  try { data = await api("/api/diagnostics/ir"); } catch { data = { status:"UNKNOWN", summary:"", steps:[] }; }
-  paintIR(host, data, false);
+  try { data = await api("/api/diagnostics/ir"); }
+  catch { data = { status:"UNKNOWN", summary:"", steps:[] }; }
+  paintIR($("#irBody"), data, false);
 };
 
 function paintIR(host, data, busy){
@@ -993,7 +1383,7 @@ async function boot(){
   } catch {}
 
   paintPresence();
-  go(location.hash.slice(1) || "home", false);
+  go(routeFromHash(), false);
 
   // Let the boot result be readable, then fade the splash OUT.
   // A clean boot should get out of the way; a failing one is the whole reason

@@ -86,6 +86,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "iw": (0, _IW_NO_MONITOR, ""),
             "systemctl": (3, "inactive", ""),
             "irsend": (127, "", "Command not found."),
+            "ir-ctl": (127, "", "Command not found."),
         }
     if mode_name == "mixed":
         return {
@@ -98,6 +99,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "iw": (0, _IW_NO_MONITOR, ""),
             "systemctl": (0, "active", ""),
             "irsend": (0, "", ""),
+            "ir-ctl": (0, "", ""),
         }
     # "pass"
     return {
@@ -109,6 +111,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
         "iw": (0, _IW_MONITOR, ""),
         "systemctl": (0, "active", ""),
         "irsend": (0, "", ""),
+        "ir-ctl": (0, "", ""),
     }
 
 

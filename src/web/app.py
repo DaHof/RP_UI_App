@@ -37,6 +37,7 @@ from pydantic import BaseModel  # noqa: E402
 from starlette.concurrency import run_in_threadpool  # noqa: E402
 
 import hardware  # noqa: E402
+import irweb  # noqa: E402
 import paths  # noqa: E402
 import pins as pins_module  # noqa: E402
 import probes  # noqa: E402
@@ -234,6 +235,150 @@ async def delete_profile(profile_id: str):
             raise HTTPException(status_code=404, detail="No such profile")
         store.delete(profile_id)
     return {"ok": True, "id": profile_id}
+
+
+# ---------------------------------------------------------------------------
+# IR: library, universal sweep, send, capture
+# ---------------------------------------------------------------------------
+
+class IRSettingsRequest(BaseModel):
+    universal_delay: float | None = None
+    rx_device: str | None = None
+
+
+class IRSendRequest(BaseModel):
+    remote: str | None = None
+    index: int | None = None
+    signal: dict | None = None
+
+
+class IRScanRequest(BaseModel):
+    device: str
+    button: str
+
+
+class IRSaveRequest(BaseModel):
+    name: str
+
+
+@app.get("/api/ir/settings")
+async def ir_settings():
+    data = irweb.service.settings()
+    return {
+        "universal_delay": data.get("universal_delay", 0.2),
+        "rx_device": data.get("rx_device", ""),
+        "tx_device": irweb.service.tx_device(),
+        # The Tkinter app keeps these in Tk variables and never writes them to
+        # disk (src/ui/app.py:524), so they reset on every restart. Reported as
+        # defaults here rather than pretending they are configured.
+        "pins_persisted": False,
+    }
+
+
+@app.put("/api/ir/settings")
+async def save_ir_settings(request: IRSettingsRequest):
+    return irweb.service.save_settings(
+        universal_delay=request.universal_delay, rx_device=request.rx_device
+    )
+
+
+@app.get("/api/ir/categories")
+async def ir_categories():
+    return {"categories": await run_in_threadpool(irweb.service.categories)}
+
+
+@app.get("/api/ir/remotes")
+async def ir_remotes(category: str = "", q: str = "", limit: int = 300):
+    return await run_in_threadpool(irweb.service.remotes, category, q, limit)
+
+
+@app.post("/api/ir/send")
+async def ir_send(request: IRSendRequest):
+    if request.signal:
+        signal = irweb._signal_from_dict(request.signal)
+    elif request.remote is not None and request.index is not None:
+        signal = await run_in_threadpool(
+            irweb.service.signal_at, request.remote, request.index
+        )
+        if signal is None:
+            raise HTTPException(status_code=404, detail="No such signal in that remote")
+    else:
+        raise HTTPException(status_code=400, detail="Provide either signal, or remote + index")
+
+    ok, message = await run_in_threadpool(irweb.service.send, signal)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+@app.get("/api/ir/universal")
+async def ir_universal():
+    return {"devices": irweb.service.universal_devices()}
+
+
+@app.get("/api/ir/universal/scan")
+async def ir_scan_state():
+    return irweb.service.scan_state
+
+
+@app.post("/api/ir/universal/scan")
+async def ir_start_scan(request: IRScanRequest):
+    ok, message = await run_in_threadpool(
+        irweb.service.start_scan, request.device, request.button
+    )
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=409)
+    return {"ok": True, "message": message, "state": irweb.service.scan_state}
+
+
+@app.post("/api/ir/universal/scan/cancel")
+async def ir_cancel_scan():
+    return {"ok": irweb.service.cancel_scan(), "state": irweb.service.scan_state}
+
+
+@app.get("/api/ir/universal/{device}")
+async def ir_universal_device(device: str):
+    return await run_in_threadpool(irweb.service.universal_buttons, device)
+
+
+@app.get("/api/ir/capture")
+async def ir_capture_state():
+    return irweb.service.capture_state
+
+
+@app.post("/api/ir/capture")
+async def ir_start_capture():
+    ok, message = irweb.service.start_capture()
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=409)
+    return {"ok": True, "message": message}
+
+
+@app.post("/api/ir/capture/cancel")
+async def ir_cancel_capture():
+    return {"ok": irweb.service.cancel_capture(), "state": irweb.service.capture_state}
+
+
+@app.post("/api/ir/capture/save")
+async def ir_save_capture(request: IRSaveRequest):
+    captured = irweb.service.capture_state.get("result")
+    if not captured:
+        raise HTTPException(status_code=400, detail="Nothing captured to save")
+    signal = irweb._signal_from_dict({**captured, "name": captured.get("name") or "signal"})
+    name = await run_in_threadpool(irweb.service.save_remote, request.name, [signal])
+    return {"ok": True, "name": name}
+
+
+# Declared last: a {name:path} route would otherwise swallow every /api/ir/* URL.
+@app.get("/api/ir/remotes/{name:path}")
+async def ir_remote(name: str):
+    return await run_in_threadpool(irweb.service.remote, name)
+
+
+@app.delete("/api/ir/remotes/{name:path}")
+async def ir_delete_remote(name: str):
+    await run_in_threadpool(irweb.service.delete_remote, name)
+    return {"ok": True, "name": name}
 
 
 # ---------------------------------------------------------------------------

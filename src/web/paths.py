@@ -23,3 +23,10 @@ PINS_YAML = DATA_DIR / "pins.yaml"
 PINS_EXAMPLE_YAML = DATA_DIR / "pins.example.yaml"
 LIBRARY_JSON = DATA_DIR / "library.json"
 SYSTEM_SETTINGS_JSON = DATA_DIR / "system_settings.json"
+
+IR_DIR = DATA_DIR / "ir"
+# Note the space: the Tkinter app created this directory and the name is load
+# bearing (src/ui/app.py:1042).
+IR_SAVED_DIR = IR_DIR / "saved remotes"
+IR_UNIVERSAL_DIR = IR_DIR / "universal"
+IR_SETTINGS_JSON = DATA_DIR / "ir_settings.json"
