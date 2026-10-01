@@ -21,6 +21,15 @@ A ``kind: link`` entry is not a process at all -- it is a tile that opens
 sensing app running on a separate Kali box). It never reaches ``launch()`` or
 ``Popen``; the frontend navigates to it directly, so it carries none of the
 argv/allowlist machinery above.
+
+A ``kind: service`` entry is neither of those -- it is a tool installed as its
+own systemd unit, meant to keep running independently of this dashboard (a
+reboot, or a restart of ``pipui-web`` itself, must not make it look stopped).
+So instead of a tracked ``Popen`` handle, "running" is always a fresh
+``systemctl is-active`` -- there is nothing in ``self._running`` to lose.
+Start/stop go through ``systemctl start|stop``, same privilege model as a
+``root: true`` ``launch`` entry: passwordless sudo must be configured for the
+specific unit, or the attempt fails immediately rather than hanging.
 """
 
 from __future__ import annotations
@@ -36,6 +45,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import paths
+import shell
 import sim
 
 # How long a link tile's reachability result is trusted before re-probing, and
@@ -59,16 +69,29 @@ IS_POSIX = os.name == "posix"
 _SIM_RUNNING = {"gnuradio"}
 
 
+def _service_loaded(unit: str) -> bool:
+    """True if systemd knows this unit at all -- read-only, no sudo needed."""
+    result = shell.run(["systemctl", "show", unit, "--property=LoadState", "--value"], timeout=3.0)
+    return result.ok and result.stdout.strip() == "loaded"
+
+
+def _service_active(unit: str) -> bool:
+    """Read-only, no sudo needed -- systemd will report this for anyone."""
+    result = shell.run(["systemctl", "is-active", unit], timeout=3.0)
+    return result.stdout.strip() == "active"
+
+
 @dataclass(frozen=True)
 class Tool:
     id: str
     name: str
     icon: str = "antenna"
     category: str = "Tools"
-    kind: str = "launch"            # "launch" | "builtin" | "link"
+    kind: str = "launch"            # "launch" | "builtin" | "link" | "service"
     view: str = ""                  # for builtin tiles
     argv: tuple[str, ...] = ()
-    url: str = ""                   # for link tiles
+    url: str = ""                   # for link tiles, and optionally for service tiles
+    unit: str = ""                  # for service tiles -- the systemd unit name
     note: str = ""
     short: str = ""                  # always-visible one-liner on the tile itself
     desc: str = ""                   # longer explanation, shown in the UI's info popover
@@ -123,10 +146,13 @@ def load_tools() -> tuple[list[Tool], str]:
         argv = _coerce_argv(entry.get("argv"))
         kind = entry.get("kind", "launch")
         url = str(entry.get("url", ""))
+        unit = str(entry.get("unit", ""))
         if kind == "launch" and not argv:
             continue                                  # unlaunchable: skip rather than half-show
         if kind == "link" and not url:
             continue                                  # no destination: skip rather than half-show
+        if kind == "service" and not unit:
+            continue                                  # nothing to control: skip rather than half-show
         tools.append(
             Tool(
                 id=str(entry["id"]),
@@ -137,6 +163,7 @@ def load_tools() -> tuple[list[Tool], str]:
                 view=str(entry.get("view", "")),
                 argv=argv,
                 url=url,
+                unit=unit,
                 note=str(entry.get("note", "")),
                 short=str(entry.get("short", "")),
                 desc=str(entry.get("desc", "")),
@@ -203,16 +230,29 @@ class Launcher:
             return sim.mode() != "fail"
         if tool.kind == "link":
             return self._link_reachable(tool)
+        if tool.kind == "service":
+            return _service_loaded(tool.unit)
         return shutil.which(tool.binary) is not None
+
+    def _service_running(self, tool: Tool) -> bool:
+        if sim.active():
+            return tool.id in _SIM_RUNNING and sim.mode() != "fail"
+        return _service_active(tool.unit)
 
     def as_dicts(self) -> list[dict]:
         self._reap()
         out = []
         for tool in self._tools:
-            running = self._running.get(tool.id)
-            uptime = int(time.monotonic() - running.started_at) if running else 0
-            if sim.active() and tool.id in _SIM_RUNNING and sim.mode() != "fail":
-                running, uptime = True, 247
+            if tool.kind == "service":
+                # Asked fresh from systemd every time, not tracked locally --
+                # the whole point is surviving a pipui-web restart.
+                running, uptime = self._service_running(tool), 0
+            else:
+                proc = self._running.get(tool.id)
+                running = bool(proc)
+                uptime = int(time.monotonic() - proc.started_at) if proc else 0
+                if sim.active() and tool.id in _SIM_RUNNING and sim.mode() != "fail":
+                    running, uptime = True, 247
             out.append(
                 {
                     "id": tool.id,
@@ -223,6 +263,7 @@ class Launcher:
                     "view": tool.view,
                     "cmd": " ".join(tool.argv),
                     "url": tool.url,
+                    "unit": tool.unit,
                     "note": tool.note,
                     "short": tool.short,
                     "desc": tool.desc,
@@ -236,10 +277,23 @@ class Launcher:
 
     # -- control -----------------------------------------------------------
 
+    def _service_control(self, tool: Tool, action: str) -> tuple[bool, str]:
+        verb = "Started" if action == "start" else "Stopped"
+        if sim.active():
+            return True, f"{verb} {tool.name} (simulated)"
+        if action == "start" and not self.available(tool):
+            return False, f"{tool.unit} is not installed"
+        result = shell.run(["sudo", "systemctl", action, tool.unit], timeout=10.0)
+        if not result.ok:
+            return False, result.detail
+        return True, f"{verb} {tool.name}"
+
     def launch(self, tool_id: str) -> tuple[bool, str]:
         tool = self.get(tool_id)
         if tool is None:
             return False, "Unknown tool"
+        if tool.kind == "service":
+            return self._service_control(tool, "start")
         if tool.kind != "launch":
             return False, "This tile is built in, not a launchable process"
         if not self.available(tool):
@@ -281,6 +335,8 @@ class Launcher:
         tool = self.get(tool_id)
         if tool is None:
             return False, "Unknown tool"
+        if tool.kind == "service":
+            return self._service_control(tool, "stop")
 
         if sim.active():
             return True, f"Stopped {tool.name} (simulated)"

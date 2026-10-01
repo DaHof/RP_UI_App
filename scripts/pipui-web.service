@@ -36,7 +36,13 @@ RestartSec=3
 
 # The dashboard binds 127.0.0.1 only, but these cost nothing and limit the
 # blast radius if that ever changes.
-NoNewPrivileges=true
+#
+# NoNewPrivileges is deliberately NOT set here: several tool tiles (Kismet,
+# Wifite, any `kind: service` entry) launch `sudo ...` as a child of this
+# process, and that kernel flag makes sudo refuse to run as root even with a
+# correct passwordless-sudo rule -- "sudo: The 'no new privileges' flag is
+# set, which prevents sudo from running as root." Setting it broke every
+# root-gated tile launched from the deployed service, not just new ones.
 PrivateTmp=true
 ProtectSystem=full
 

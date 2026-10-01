@@ -249,10 +249,10 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .mod.on svg.ic{color:var(--accent)}
 .mod.off{opacity:.45;cursor:not-allowed}
 .mod .topr{display:flex;align-items:center;gap:4px}
-.mod .info{display:flex;align-items:center;justify-content:center;color:var(--ink-faint);
+.mod .info,.mod .openlink{display:flex;align-items:center;justify-content:center;color:var(--ink-faint);
   padding:5px;margin:-5px;border-radius:50%}
-.mod .info svg.ic{width:14px;height:14px}
-.mod .info:hover,.mod .info:active{color:var(--ink);background:rgba(127,127,127,.15)}
+.mod .info svg.ic,.mod .openlink svg.ic{width:14px;height:14px}
+.mod .info:hover,.mod .info:active,.mod .openlink:hover,.mod .openlink:active{color:var(--ink);background:rgba(127,127,127,.15)}
 .tag{font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);
   border:1px solid var(--metal);border-radius:3px;padding:0 3px;white-space:nowrap}
 .tag.warn{color:var(--red);border-color:var(--red)}
@@ -528,6 +528,7 @@ function glanceText(t){
   if (t.desc) return t.desc.split(/\.\s/)[0].replace(/\.$/, "") + ".";
   if (t.kind === "builtin") return "on-device";
   if (t.kind === "link") return t.note || t.url;
+  if (t.kind === "service") return t.note || t.unit || t.url;
   return t.note || t.cmd;
 }
 function ago(iso){
@@ -748,6 +749,8 @@ function tile(t){
         ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
           : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
           : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
+        ${t.kind === "service" && t.running && t.url
+          ? `<span class="openlink" title="Open ${esc(t.name)}">${ic("external")}</span>` : ""}
       </span>
     </div>
     <div class="nm">${esc(t.name)}</div>
@@ -763,6 +766,12 @@ function tile(t){
   if (info) info.onclick = (ev) => {
     ev.stopPropagation();
     showInfo(t.name, t.desc);
+  };
+
+  const openlink = node.querySelector(".openlink");
+  if (openlink) openlink.onclick = (ev) => {
+    ev.stopPropagation();
+    window.open(t.url, "_blank", "noopener");
   };
 
   node.onclick = () => {
