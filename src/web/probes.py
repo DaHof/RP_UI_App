@@ -22,6 +22,7 @@ import hardware
 import mmwave
 import shell
 import sim
+import wifiscan
 
 PASS, WARN, FAIL, UNKNOWN = "PASS", "WARN", "FAIL", "UNKNOWN"
 
@@ -216,6 +217,18 @@ def _probe_wifi() -> tuple[str, str]:
     return WARN, "Adapter present but monitor mode not advertised"
 
 
+def _probe_wifiscan() -> tuple[str, str]:
+    snap = wifiscan.service.snapshot()
+    if snap["error"]:
+        hint = " -- see scripts/install-tools.sh's setcap step" if "not permitted" in snap["error"].lower() else ""
+        return FAIL, f"{snap['error']}{hint}"
+    if not snap["updated_at"]:
+        return WARN, f"Not scanned yet ({snap['iface']})"
+    if not snap["networks"]:
+        return WARN, f"Scan ran but found nothing on {snap['iface']}"
+    return PASS, f"{len(snap['networks'])} network(s) seen on {snap['iface']}"
+
+
 def _probe_thermal() -> tuple[str, str]:
     temp_result = shell.run(["vcgencmd", "measure_temp"], timeout=2.0)
     if temp_result.unsupported or temp_result.missing:
@@ -256,6 +269,7 @@ PROBES: tuple[Probe, ...] = (
     Probe("sdr", "RTL-SDR", _probe_sdr, SLOW),
     Probe("proxmark", "Proxmark3", _probe_proxmark, SLOW),
     Probe("wifi", "Wi-Fi monitor", _probe_wifi, SLOW),
+    Probe("wifiscan", "Wi-Fi scanner", _probe_wifiscan, FAST),
 )
 
 BY_NAME = {p.name: p for p in PROBES}

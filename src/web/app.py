@@ -45,6 +45,7 @@ import probes  # noqa: E402
 import settings as settings_module  # noqa: E402
 import shell  # noqa: E402
 import sim  # noqa: E402
+import wifiscan  # noqa: E402
 from health import monitor  # noqa: E402
 from launcher import launcher  # noqa: E402
 from library_store import LibraryStore  # noqa: E402
@@ -225,6 +226,25 @@ async def mmwave_targets():
         "reader": mmwave.service.status.as_dict() | {"polling": mmwave.service.polling},
         **mmwave.service.snapshot(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Wi-Fi network scanner
+# ---------------------------------------------------------------------------
+
+@app.get("/api/wifiscan/networks")
+async def wifiscan_networks():
+    return wifiscan.service.snapshot()
+
+
+@app.post("/api/wifiscan/scan")
+async def wifiscan_scan():
+    """Active scans take a few seconds -- run off the event loop, and 409 if
+    one's already in flight rather than queuing a second."""
+    result = await run_in_threadpool(wifiscan.service.scan)
+    if result is None:
+        raise HTTPException(status_code=409, detail="A scan is already running")
+    return result
 
 
 @app.get("/api/library")

@@ -190,6 +190,20 @@ tools:
       output, no manual setup needed.
 
   # --------------------------------------------------------------------- wi-fi
+  - id: wifiscan
+    name: Network Scanner
+    icon: wifi
+    category: Wi-Fi
+    kind: builtin
+    view: wifiscan
+    short: Nearby WiFi networks & signal
+    desc: >-
+      Scans for nearby Wi-Fi access points -- SSID, signal strength, channel,
+      security -- with a normal managed-mode scan, not the monitor-mode
+      capture Kismet does. No client/device tracking, just what's on the air.
+      Needs `iw` to have CAP_NET_ADMIN (scripts/install-tools.sh sets this
+      up) or scans fail with "Operation not permitted".
+
   - id: kismet
     name: Kismet
     icon: wifi

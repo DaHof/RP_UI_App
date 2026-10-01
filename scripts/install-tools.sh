@@ -12,9 +12,10 @@
 #                        which is why this script asks for it explicitly
 #                        rather than being folded into setup-pi.sh)
 #   - Hardware enablement: i2c-tools + I2C overlay (PN532), lirc + IR overlays
-#                        (the two IR modules), bluez (Bluetooth), group
-#                        membership for i2c/gpio/dialout/bluetooth (the last
-#                        one is what lets the LD2450 mmWave reader open
+#                        (the two IR modules), bluez (Bluetooth), iw +
+#                        CAP_NET_ADMIN via setcap (the Network Scanner tile),
+#                        group membership for i2c/gpio/dialout/bluetooth (the
+#                        last one is what lets the LD2450 mmWave reader open
 #                        /dev/serial0 without root)
 #   - Kiosk deps:        chromium, unclutter
 #   - btop, a terminal emulator (whatever provides x-terminal-emulator)
@@ -66,8 +67,21 @@ apt_install wifite
 apt_install i2c-tools
 apt_install lirc
 apt_install bluez bluez-tools pulseaudio-module-bluetooth
+apt_install iw
 
 usermod -aG i2c,gpio,dialout,bluetooth "$REAL_USER" 2>/dev/null || true
+
+# Lets the Network Scanner tile (src/web/wifiscan.py) trigger `iw scan` as the
+# dashboard's normal non-root user -- without this it fails with "Operation
+# not permitted". Scoped to the iw binary only, not a blanket sudo rule.
+IW_BIN="$(readlink -f "$(command -v iw)" 2>/dev/null || true)"
+if [ -n "$IW_BIN" ]; then
+  setcap cap_net_admin,cap_net_raw+eip "$IW_BIN" \
+    && echo "Granted CAP_NET_ADMIN to $IW_BIN for Wi-Fi scanning." \
+    || FAILED+=("setcap on $IW_BIN")
+else
+  FAILED+=("setcap (iw not found -- install iw/wireless-tools first)")
+fi
 
 CONFIG_TXT=/boot/firmware/config.txt
 [ -f "$CONFIG_TXT" ] || CONFIG_TXT=/boot/config.txt

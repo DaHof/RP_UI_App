@@ -463,6 +463,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
     <section class="view" id="v-diag"></section>
     <section class="view" id="v-pins"></section>
     <section class="view" id="v-mmwave"></section>
+    <section class="view" id="v-wifiscan"></section>
     <section class="view" id="v-settings"></section>
     <section class="view" id="v-themes"></section>
   </main>
@@ -614,7 +615,8 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
 const TITLES = {
   home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
   bluetooth:"Bluetooth", proxmark:"Proxmark3", diag:"Diagnostics",
-  pins:"GPIO Pins", mmwave:"mmWave Radar", settings:"Settings", themes:"Themes",
+  pins:"GPIO Pins", mmwave:"mmWave Radar", wifiscan:"Network Scanner",
+  settings:"Settings", themes:"Themes",
 };
 
 /* Builtin tile id -> the Tkinter feature-flag name that gates it. Only flags
@@ -1562,6 +1564,74 @@ RENDER.mmwave = async () => {
     try { paint(await api("/api/mmwave/targets")); }
     catch { stopRadarTimer(); }
   }, 150);
+};
+
+/* ---- Wi-Fi network scanner ------------------------------------------------
+   A plain managed-mode scan, not Kismet's monitor-mode capture -- SSIDs and
+   signal strength, no client tracking. Scanning blocks server-side for a few
+   seconds and the POST response *is* the result, so there's no poll loop
+   here the way mmWave/IR need -- just a button and a loading state. */
+function signalTier(dbm){
+  if (dbm >= -60) return "PASS";
+  if (dbm >= -75) return "WARN";
+  return "FAIL";
+}
+
+function paintNetworks(snap){
+  const list = $("#wsList");
+  const hdr = $("#wsHdr");
+  if (!list) return;
+  hdr.textContent = `Networks (${snap.networks.length})`;
+  list.innerHTML = snap.networks.length
+    ? snap.networks.map(n => `
+        <div class="row">
+          <span class="led" data-s="${signalTier(n.signal_dbm)}" title="${n.signal_dbm} dBm"></span>
+          <span class="k">${esc(n.ssid)}</span>
+          <span class="v dim mono">${n.band} · ch ${n.channel ?? "?"}</span>
+          <span class="chip" style="margin-left:8px">${esc(n.security)}</span>
+        </div>`).join("")
+    : `<div class="empty" style="padding:12px">${snap.updated_at ? "Scan ran, nothing found." : "Not scanned yet."}</div>`;
+}
+
+RENDER.wifiscan = async () => {
+  const host = $("#v-wifiscan");
+  host.innerHTML = `<div class="empty">Loading last scan…</div>`;
+  let snap;
+  try { snap = await api("/api/wifiscan/networks"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  host.innerHTML = `
+    ${snap.error ? `<div class="banner bad">${ic("alert")}<div>
+      <b>Last scan failed.</b><br>${esc(snap.error)}</div></div>` : ""}
+    <div class="panel">
+      <div class="row" style="border-bottom:0">
+        <span class="k">Interface</span><span class="v mono">${esc(snap.iface)}</span>
+      </div>
+      <div class="btnrow">
+        <button class="btn pri" id="wsScanBtn">${ic("refresh")} Scan now</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 id="wsHdr">Networks (${snap.networks.length})</h3>
+      <div id="wsList"></div>
+    </div>`;
+  paintNetworks(snap);
+
+  $("#wsScanBtn").onclick = async () => {
+    const btn = $("#wsScanBtn");
+    btn.disabled = true;
+    btn.innerHTML = `${ic("refresh")} Scanning…`;
+    try {
+      const result = await api("/api/wifiscan/scan", { method: "POST" });
+      paintNetworks(result);
+      toast(result.error || `Found ${result.networks.length} network(s)`);
+    } catch (e){
+      toast(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `${ic("refresh")} Scan now`;
+    }
+  };
 };
 
 /* ---- Bluetooth: Discovery, Pairing, Connection consolidated into one screen.

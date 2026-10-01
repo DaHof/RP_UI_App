@@ -82,6 +82,52 @@ Wiphy phy0
 	Supported interface modes:
 		 * managed"""
 
+# `iw dev <iface> scan` output -- fabricated but shaped exactly like the real
+# thing, so wifiscan.parse_scan runs for real against it. Covers: a normal
+# WPA2 AP, a 5 GHz AP, an open guest network, and a hidden (blank-SSID) WEP
+# one, to exercise every branch of the security/SSID parsing.
+_IW_SCAN_SAMPLE = """\
+BSS aa:bb:cc:dd:ee:01(on wlan0)
+	freq: 2437
+	signal: -42.00 dBm
+	last seen: 80 ms ago
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	SSID: HomeNetwork
+	DS Parameter set: channel 6
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+BSS 11:22:33:44:55:02(on wlan0)
+	freq: 5180
+	signal: -58.00 dBm
+	last seen: 140 ms ago
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	SSID: Neighbor_5G
+	RSN:	 * Version: 1
+		 * Group cipher: CCMP
+		 * Pairwise ciphers: CCMP
+		 * Authentication suites: PSK
+BSS 66:77:88:99:aa:03(on wlan0)
+	freq: 2462
+	signal: -71.00 dBm
+	last seen: 300 ms ago
+	capability: ESS ShortSlotTime (0x0401)
+	SSID: CoffeeShop_Guest
+BSS de:ad:be:ef:00:04(on wlan0)
+	freq: 2412
+	signal: -85.00 dBm
+	last seen: 1200 ms ago
+	capability: ESS Privacy ShortSlotTime (0x0411)
+	SSID:
+	DS Parameter set: channel 1
+	WPA:	 * Version: 1
+		 * Group cipher: TKIP
+		 * Pairwise ciphers: TKIP
+		 * Authentication suites: PSK"""
+
+_IW_SCAN_DENIED = "command failed: Operation not permitted (-1)"
+
 
 def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
     """Canned ``(returncode, stdout, stderr)`` keyed by the binary name."""
@@ -145,6 +191,18 @@ def command(argv: list[str]) -> tuple[int, str, str] | None:
         if m == "mixed":
             return 0, "throttled=0x60000", ""       # historical only
         return 0, "throttled=0x0", ""
+
+    # iw is also two different probes behind one binary: `iw list` (monitor
+    # mode capability, handled by _table() above) and `iw dev <iface> scan`
+    # (the network scanner). "fail" simulates the no-CAP_NET_ADMIN case --
+    # the real error wifiscan surfaces when scripts/install-tools.sh's setcap
+    # step hasn't run -- rather than reusing _table()'s "iw missing" story,
+    # since a scan failing for lack of a capability is a different, more
+    # common case than the binary being absent.
+    if binary == "iw" and "scan" in argv:
+        if mode() == "fail":
+            return 1, "", _IW_SCAN_DENIED
+        return 0, _IW_SCAN_SAMPLE, ""
 
     # bluetoothctl is one binary standing in for a dozen subcommands; "pass" and
     # "mixed" both get a working stack with two fake devices so Discovery,
