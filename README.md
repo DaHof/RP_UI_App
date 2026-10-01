@@ -164,6 +164,19 @@ python3 -m pip install -r requirements.txt
 python3 src/main.py
 ```
 
+For the **web dashboard** specifically (rather than the Tkinter app above),
+`scripts/setup-pi.sh` does the equivalent of this plus the dashboard's own
+dependencies, its systemd service, and the sudo rule the update scripts below
+need -- one command on a Pi that has nothing on it yet:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DaHof/RP_UI_App/main/scripts/setup-pi.sh | bash
+```
+
+Every step checks before it acts, so it's also safe to re-run later. See its
+own header for what each step does, and for running it against a fork or a
+non-default branch.
+
 ### Updating
 
 Three ways to get a later commit onto a Pi that's already set up, from
