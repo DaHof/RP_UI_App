@@ -114,9 +114,28 @@ else
       FAILED+=("nodejs (NodeSource setup script failed)")
     fi
   fi
+  # A pre-existing distro `node` (e.g. Kali's own nodejs package) doesn't
+  # always bring npm along as part of the same package -- check for it
+  # explicitly rather than assuming node implies npm.
+  command -v npm >/dev/null 2>&1 || apt_install npm
+
   if command -v npm >/dev/null 2>&1; then
     echo "Installing Claude Code CLI..."
-    npm install -g @anthropic-ai/claude-code || FAILED+=("@anthropic-ai/claude-code (npm)")
+    # --allow-scripts: recent npm blocks a package's postinstall by default:
+    # claude-code's postinstall (node install.cjs) is what actually sets up
+    # the `claude` binary, so without this flag the package "installs" but
+    # claude never works.
+    if npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code; then
+      if command -v claude >/dev/null 2>&1 && claude --version >/dev/null 2>&1; then
+        echo "Claude Code CLI installed: $(claude --version 2>/dev/null)"
+      else
+        echo "claude-code installed via npm, but 'claude --version' didn't run cleanly." >&2
+        echo "  Try: node \"\$(npm root -g)/@anthropic-ai/claude-code/install.cjs\"" >&2
+        FAILED+=("@anthropic-ai/claude-code (postinstall didn't complete)")
+      fi
+    else
+      FAILED+=("@anthropic-ai/claude-code (npm)")
+    fi
   else
     FAILED+=("@anthropic-ai/claude-code (no npm available)")
   fi
