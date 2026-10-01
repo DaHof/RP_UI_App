@@ -263,6 +263,10 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
   font:inherit;font-size:12px;font-weight:600;color:var(--ink);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   border:1px solid var(--metal);border-top-color:var(--metal-hi)}
+/* `.btn{display:inline-flex}` otherwise beats the `hidden` attribute's own
+   `display:none` -- same specificity tier, author rule wins. showInfo()
+   relies on hiding #mNo, so this isn't optional. */
+.btn[hidden]{display:none}
 .btn:active{transform:translateY(1px);filter:brightness(.92)}
 .btn svg.ic{width:16px;height:16px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
