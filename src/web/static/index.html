@@ -248,6 +248,11 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .mod.on{border-color:var(--accent);box-shadow:inset 0 1px 0 var(--hi),0 0 0 1px var(--accent)}
 .mod.on svg.ic{color:var(--accent)}
 .mod.off{opacity:.45;cursor:not-allowed}
+.mod .topr{display:flex;align-items:center;gap:4px}
+.mod .info{display:flex;align-items:center;justify-content:center;color:var(--ink-faint);
+  padding:5px;margin:-5px;border-radius:50%}
+.mod .info svg.ic{width:14px;height:14px}
+.mod .info:hover,.mod .info:active{color:var(--ink);background:rgba(127,127,127,.15)}
 .tag{font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);
   border:1px solid var(--metal);border-radius:3px;padding:0 3px;white-space:nowrap}
 
@@ -422,6 +427,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M6 4v6M6 14v6M12 4v12M12 20v0M18 4v3M18 11v9"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="17.5" r="2"/><circle cx="18" cy="8.5" r="2"/></symbol>
  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/></symbol>
  <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 18h2v2H4zM9 14h2v6H9zM14 9h2v11h-2zM19 4h2v16h-2z" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="1" fill="currentColor" stroke="none"/></symbol>
 </defs></svg>
 
 <!-- boot splash: rendered visible, then faded OUT. Never gate content behind an
@@ -528,6 +534,25 @@ function confirmAction({ title, body, detail, confirmLabel = "Confirm" }){
     $("#mYes").onclick = () => done(true);
     $("#mNo").onclick  = () => done(false);
   });
+}
+
+/* Read-only "what is this" popover for a tile's info icon -- reuses the same
+   modal box as confirmAction, temporarily dressed as a single-button dialog. */
+function showInfo(title, body){
+  $("#mTitle").textContent = title;
+  $("#mBody").textContent = body;
+  $("#mWarn").hidden = true;
+  $("#mNo").hidden = true;
+  $("#mYes").textContent = "Close";
+  $("#mYes").classList.remove("danger");
+  $("#modal").classList.add("on");
+  const close = () => {
+    $("#modal").classList.remove("on");
+    $("#mYes").onclick = null;
+    $("#mNo").hidden = false;
+    $("#mYes").classList.add("danger");
+  };
+  $("#mYes").onclick = close;
 }
 
 /* ===========================================================================
@@ -693,9 +718,12 @@ function tile(t){
   const cls = passive ? "" : !t.available ? "off" : t.running ? "on" : "";
   const node = el(`<button class="mod ${cls}">
     <div class="top">${ic(t.icon)}
-      ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
-        : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
-        : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
+      <span class="topr">
+        ${t.desc ? `<span class="info" title="What is this?">${ic("info")}</span>` : ""}
+        ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
+          : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
+          : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
+      </span>
     </div>
     <div class="nm">${esc(t.name)}</div>
     ${t.kind === "builtin" ? `<div class="cmd">on-device</div>`
@@ -703,10 +731,16 @@ function tile(t){
       : t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
       : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
     ${(!t.available && !passive) || t.root
-      ? `<div style="position:absolute;top:9px;right:26px">
+      ? `<div style="position:absolute;top:9px;right:${t.desc ? 46 : 26}px">
            <span class="tag">${!t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root"}</span></div>`
       : ""}
   </button>`).firstChild;
+
+  const info = node.querySelector(".info");
+  if (info) info.onclick = (ev) => {
+    ev.stopPropagation();
+    showInfo(t.name, t.desc);
+  };
 
   node.onclick = () => {
     if (t.kind === "builtin") return go(t.view);
@@ -1703,19 +1737,21 @@ function paintPresence(){
   $("#lcdCount").textContent = state.tools.filter(t => t.running).length;
 }
 
+/* Real CPU-busy% history from the server (one sample per health-loop tick,
+   ~5s apart -- see health.py:_sample_cpu), not a decorative random EQ. */
+const SPEC_BARS = 20;
 const spec = $("#spec");
-for (let i = 0; i < 20; i++){
-  const bar = document.createElement("i");
-  bar.style.height = (18 + ((i * 37) % 62)) + "%";
-  spec.appendChild(bar);
-}
-const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-if (!reduceMotion){
-  setInterval(() => {
-    if (document.visibilityState !== "visible") return;
-    const live = state.tools.some(t => t.running);
-    for (const bar of spec.children) bar.style.height = (10 + Math.random() * (live ? 78 : 34)) + "%";
-  }, 180);
+for (let i = 0; i < SPEC_BARS; i++) spec.appendChild(document.createElement("i"));
+
+function paintSpec(){
+  const hist = state.health?.cpu_history || [];
+  const bars = spec.children;
+  const pad = bars.length - hist.length;
+  for (let i = 0; i < bars.length; i++){
+    const v = i < pad ? null : hist[i - pad];
+    bars[i].style.height = (v == null ? 2 : Math.max(2, v)) + "%";
+  }
+  spec.title = hist.length ? `CPU ${hist[hist.length - 1]}% (last ${hist.length * 5}s)` : "CPU: gathering samples...";
 }
 const clock = () => {
   $("#lcdClock").textContent = new Date().toTimeString().slice(0, 5);
@@ -1736,6 +1772,7 @@ async function poll(){
     state.settings = settings;
     failures = 0;
     paintPresence();
+    paintSpec();
     // Feature flags can flip from the Tkinter side too, so Home re-filters on
     // every poll, not just after a save made from this page.
     if (state.view === "home") RENDER.home();

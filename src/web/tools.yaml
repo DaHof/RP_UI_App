@@ -39,6 +39,9 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: nfc
+    desc: >-
+      Reads 13.56MHz tags with the PN532 reader. Scan a card to see its
+      UID/type, save it to your library, and clone or emulate it later.
 
   - id: proxmark
     name: Proxmark3
@@ -46,6 +49,10 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: proxmark
+    desc: >-
+      RFID tool covering both low-frequency (125kHz, e.g. key fobs) and
+      high-frequency (13.56MHz) cards via a Proxmark3 device. Not wired up
+      yet -- the backend is a stub, so this tile doesn't do anything real.
 
   - id: ir
     name: Infrared
@@ -53,6 +60,10 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: ir
+    desc: >-
+      Captures and replays IR remote signals (TVs, ACs, etc.) over the
+      GPIO-wired transmitter/receiver. Includes a saved-remotes library and
+      a universal-remote scan mode.
 
   - id: bluetooth
     name: Bluetooth
@@ -60,6 +71,9 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: bluetooth
+    desc: >-
+      Scans for nearby Bluetooth devices and lets you pair, trust, and
+      connect to them via BlueZ.
 
   - id: diag
     name: Diagnostics
@@ -67,6 +81,9 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: diag
+    desc: >-
+      Runs health probes across the hardware (I2C bus, IR, USB devices,
+      power/throttling) and reports PASS/WARN/FAIL for each.
 
   - id: pins
     name: GPIO Pins
@@ -74,6 +91,9 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: pins
+    desc: >-
+      Shows which GPIO pin each piece of hardware is wired to, so you can
+      check or change wiring without digging through the README.
 
   - id: mmwave
     name: mmWave Radar
@@ -82,6 +102,9 @@ tools:
     note: HLK-LD2450 on UART (pins 8/10)
     kind: builtin
     view: mmwave
+    desc: >-
+      Live presence/position tracking from an HLK-LD2450 radar sensor on
+      UART -- shows each detected target's distance, position, and speed.
 
   - id: settings
     name: Settings
@@ -89,6 +112,9 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: settings
+    desc: >-
+      Toggle features on/off, set GPIO pin assignments, and control
+      logging.
 
   # ------------------------------------------------------ software defined radio
   - id: gnuradio
@@ -96,12 +122,20 @@ tools:
     icon: sine
     category: Software Defined Radio
     argv: ["gnuradio-companion"]
+    desc: >-
+      Visual, drag-and-drop toolkit for building SDR signal-processing
+      pipelines from scratch. Flexible but the steepest learning curve of
+      the SDR tools here.
 
   - id: gqrx
     name: GQRX
     icon: radar
     category: Software Defined Radio
     argv: ["gqrx"]
+    desc: >-
+      Simple SDR receiver and spectrum analyzer -- tune to a frequency and
+      listen or watch the waterfall. Good starting point for "what's on
+      the air".
 
   - id: urh
     name: URH
@@ -109,12 +143,19 @@ tools:
     category: Software Defined Radio
     note: Universal Radio Hacker
     argv: ["urh"]
+    desc: >-
+      Reverse-engineers unknown wireless protocols: capture a signal,
+      decode it into bits, then replay or fuzz it. Popular for garage
+      doors, key fobs, and similar devices.
 
   - id: sdrangel
     name: SDRangel
     icon: antenna
     category: Software Defined Radio
     argv: ["sdrangel"]
+    desc: >-
+      Full-featured SDR receiver/transmitter suite with lots of built-in
+      demodulators, in the same space as GQRX and GNU Radio.
 
   - id: rtl433
     name: rtl_433
@@ -122,6 +163,10 @@ tools:
     category: Software Defined Radio
     note: decodes 433 MHz sensors
     argv: ["rtl_433"]
+    desc: >-
+      Decodes data from cheap 433MHz devices -- weather stations,
+      tire-pressure sensors, remote switches -- straight to readable
+      output, no manual setup needed.
 
   # --------------------------------------------------------------------- wi-fi
   - id: kismet
@@ -131,6 +176,9 @@ tools:
     note: "web UI on :2501"
     root: true
     argv: ["sudo", "kismet"]
+    desc: >-
+      Passive Wi-Fi/Bluetooth/SDR network detector and packet sniffer --
+      lists nearby networks and devices in a web UI on port 2501.
 
   - id: wifite
     name: Wifite
@@ -138,6 +186,9 @@ tools:
     category: Wi-Fi
     root: true
     argv: ["sudo", "wifite"]
+    desc: >-
+      Automates common Wi-Fi auditing attacks (handshake capture, WPS,
+      etc.) against networks you're authorized to test.
 
   # erogluyusuf/WiFi-Sensing-Radar ("Solar Radar") -- RSSI presence sensing with
   # its own web UI on :8088. It runs on a separate box (a Kali machine, not
@@ -150,6 +201,11 @@ tools:
     kind: link
     note: "WiFi-Sensing-Radar on Kali -- edit host in tools.yaml"
     url: "http://kali.local:8088"
+    desc: >-
+      Opens the web UI of a separate "WiFi-Sensing-Radar" app running on
+      another machine (a Kali box on your LAN) that senses motion/presence
+      through walls using Wi-Fi signal disruption. This tile just links out
+      -- this Pi doesn't run it.
 
   # -------------------------------------------------------------------- system
   - id: terminal
@@ -157,12 +213,16 @@ tools:
     icon: terminal
     category: System
     argv: ["x-terminal-emulator"]
+    desc: "Opens a regular terminal window."
 
   - id: btop
     name: System Monitor
     icon: activity
     category: System
     argv: ["x-terminal-emulator", "-e", "btop"]
+    desc: >-
+      Opens btop, a terminal-based resource monitor for CPU, RAM, disk, and
+      network usage.
 
   - id: claude-code
     name: Claude Code
@@ -170,3 +230,6 @@ tools:
     category: System
     note: "scripts/install-tools.sh installs this"
     argv: ["x-terminal-emulator", "-e", "claude"]
+    desc: >-
+      Opens a terminal running the Claude Code CLI, for working on this
+      project's own code from the kiosk.

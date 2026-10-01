@@ -28,6 +28,28 @@ FAST_INTERVAL = 5.0
 SLOW_INTERVAL = 60.0
 STALE_FACTOR = 3.0
 
+# How many /proc/stat-derived samples the header's history bars keep. At one
+# sample per FAST_INTERVAL tick, 20 bars span 100s -- recent enough to read as
+# "now" without updating so often it's pointless over a 5s poll.
+CPU_HISTORY_LEN = 20
+
+
+def _read_cpu_times() -> tuple[int, int] | None:
+    """(idle, total) jiffies from /proc/stat's aggregate ``cpu`` line.
+
+    Linux-only, which is fine here: this file's whole reason to exist is
+    polling Pi-only hardware (``vcgencmd``, ``i2cdetect``, ...), so a box
+    without ``/proc/stat`` already can't run most of what's around it.
+    """
+    try:
+        with open("/proc/stat", encoding="ascii") as f:
+            line = f.readline()
+        parts = [int(x) for x in line.split()[1:]]
+        idle = parts[3] + parts[4]  # idle + iowait
+        return idle, sum(parts)
+    except Exception:
+        return None
+
 
 def _overall(statuses: list[str]) -> str:
     """FAIL dominates, then WARN -- matching ``diagnostics.py:_overall_status``."""
@@ -49,6 +71,9 @@ class HealthMonitor:
         self._ir_lock = threading.Lock()
         self._ir_result: dict | None = None
 
+        self._cpu_prev: tuple[int, int] | None = None
+        self._cpu_history: list[float] = []
+
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
@@ -67,14 +92,36 @@ class HealthMonitor:
     def _loop(self) -> None:
         self.refresh(probes.FAST)
         self.refresh(probes.SLOW)
+        self._sample_cpu()
         self._ready.set()
 
         last_slow = time.monotonic()
         while not self._stop.wait(FAST_INTERVAL):
             self.refresh(probes.FAST)
+            self._sample_cpu()
             if time.monotonic() - last_slow >= SLOW_INTERVAL:
                 self.refresh(probes.SLOW)
                 last_slow = time.monotonic()
+
+    def _sample_cpu(self) -> None:
+        """Append one CPU-busy% sample, derived from the /proc/stat delta
+        since the last tick -- the first tick after start has no prior
+        reading to diff against, so it contributes nothing yet."""
+        current = _read_cpu_times()
+        if current is None:
+            return
+        prev = self._cpu_prev
+        self._cpu_prev = current
+        if prev is None:
+            return
+        idle_delta = current[0] - prev[0]
+        total_delta = current[1] - prev[1]
+        if total_delta <= 0:
+            return
+        busy_pct = max(0.0, min(100.0, 100.0 * (1 - idle_delta / total_delta)))
+        with self._lock:
+            self._cpu_history.append(round(busy_pct, 1))
+            del self._cpu_history[:-CPU_HISTORY_LEN]
 
     # -- probing -----------------------------------------------------------
 
@@ -123,12 +170,16 @@ class HealthMonitor:
         if ir:
             channels.append(ir)
 
+        with self._lock:
+            cpu_history = list(self._cpu_history)
+
         return {
             "status": _overall([c["status"] for c in channels]),
             "checked_at": now.isoformat(timespec="seconds"),
             "simulated": sim.active(),
             "sim_mode": sim.mode(),
             "channels": channels,
+            "cpu_history": cpu_history,
         }
 
     # -- IR diagnostic (explicit, slow, single-slot) ------------------------
