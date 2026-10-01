@@ -9,15 +9,23 @@
 #   name      label on the tile.
 #   icon      sprite symbol id (see static/index.html).
 #   category  groups tiles under a heading, in the order first seen below.
-#   kind      "launch" runs argv; "builtin" opens an in-dashboard view.
+#   kind      "launch" runs argv; "builtin" opens an in-dashboard view;
+#             "link" opens `url` in a new tab -- for a tool that lives on
+#             another machine (e.g. a WiFi sensing app on a separate Kali box),
+#             not a process this dashboard runs or can stop.
 #   view      for kind: builtin -- which screen to open.
-#   argv      MUST be a list, never a string. Passed verbatim, no shell.
+#   argv      for kind: launch -- MUST be a list, never a string. Passed
+#             verbatim, no shell.
+#   url       for kind: link -- MUST be a reachable http(s) URL on your LAN.
+#             Never a command, never user-suppliable; it's a hyperlink.
 #   note      small print shown on the tile.
 #   root      true marks it as privileged; the UI demands a confirm step.
 #
 # To add your own tool, copy a block and change `id`, `name` and `argv`.
 # A tool whose binary is missing shows as "absent" rather than disappearing,
-# so a typo is visible instead of silent.
+# so a typo is visible instead of silent. A `link` tile has no such check --
+# there is no way to probe a sensing app on someone else's box, so it always
+# shows available and simply fails to load if that host is off or unreachable.
 #
 # Note on `sudo` entries: stdin is closed when launching, so a password prompt
 # fails immediately rather than hanging. Passwordless sudo must be configured
@@ -67,6 +75,21 @@ tools:
     kind: builtin
     view: pins
 
+  - id: mmwave
+    name: mmWave Radar
+    icon: radar
+    category: Hardware Tools
+    note: HLK-LD2450 on UART (pins 8/10)
+    kind: builtin
+    view: mmwave
+
+  - id: settings
+    name: Settings
+    icon: sliders
+    category: Hardware Tools
+    kind: builtin
+    view: settings
+
   # ------------------------------------------------------ software defined radio
   - id: gnuradio
     name: GNU Radio
@@ -115,6 +138,18 @@ tools:
     category: Wi-Fi
     root: true
     argv: ["sudo", "wifite"]
+
+  # erogluyusuf/WiFi-Sensing-Radar ("Solar Radar") -- RSSI presence sensing with
+  # its own web UI on :8088. It runs on a separate box (a Kali machine, not
+  # this Pi), so it's a link tile, not something this dashboard launches or
+  # can stop. EDIT THE HOST below to match your Kali box's address/hostname.
+  - id: wifi-sensing-radar
+    name: Solar Radar
+    icon: wifi
+    category: Wi-Fi
+    kind: link
+    note: "WiFi-Sensing-Radar on Kali -- edit host in tools.yaml"
+    url: "http://kali.local:8088"
 
   # -------------------------------------------------------------------- system
   - id: terminal

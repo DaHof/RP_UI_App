@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 import hardware
+import mmwave
 import shell
 import sim
 
@@ -145,6 +146,28 @@ def _probe_pn532() -> tuple[str, str]:
     return PASS, "Hardware reader running"
 
 
+def _probe_mmwave() -> tuple[str, str]:
+    status = mmwave.service.status
+    if status.degraded:
+        return FAIL, status.reason or "LD2450 unavailable; using mock reader"
+    if not status.started:
+        return FAIL, status.reason or "Reader did not start"
+    if not mmwave.service.polling:
+        return WARN, "Reader started but its read thread is no longer running"
+
+    if status.active == "mock":
+        return PASS, "Mock reader active (no hardware required)"
+
+    snapshot = mmwave.service.snapshot()
+    port = getattr(mmwave.service.reader, "port", "?")
+    if not snapshot["updated_at"]:
+        return WARN, f"Listening on {port}; no frames seen yet"
+    age = time.time() - snapshot["updated_at"]
+    if age > 3.0:
+        return WARN, f"Listening on {port}; last frame {age:.0f}s ago"
+    return PASS, f"LD2450 live on {port} ({len(snapshot['targets'])} target(s))"
+
+
 def _probe_sdr() -> tuple[str, str]:
     result = shell.run(["rtl_test", "-t"], timeout=4.0)
     if result.unsupported or result.missing:
@@ -227,6 +250,7 @@ class Probe:
 
 PROBES: tuple[Probe, ...] = (
     Probe("pn532", "PN532", _probe_pn532, FAST),
+    Probe("mmwave", "mmWave Radar", _probe_mmwave, FAST),
     Probe("thermal", "CPU / Thermal", _probe_thermal, FAST),
     Probe("ir", "IR / LIRC", _probe_ir, FAST),
     Probe("sdr", "RTL-SDR", _probe_sdr, SLOW),

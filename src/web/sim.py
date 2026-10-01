@@ -50,6 +50,15 @@ _I2C_WITH_PN532 = """\
 
 _I2C_EMPTY = _I2C_WITH_PN532.replace(" 24 ", " -- ")
 
+# Two fake nearby devices, used wherever bluetoothctl's "pass"/"mixed" output is
+# needed: one already paired (so paired-devices and devices both have content
+# worth rendering), one discoverable-only.
+_BT_SPEAKER = "AA:BB:CC:DD:EE:01"
+_BT_KEYBOARD = "AA:BB:CC:DD:EE:02"
+_BT_DEVICES = f"Device {_BT_SPEAKER} JBL Flip 5\nDevice {_BT_KEYBOARD} Keyboard K380"
+_BT_PAIRED = f"Device {_BT_KEYBOARD} Keyboard K380"
+_BT_ICONS = {_BT_SPEAKER: "audio-card", _BT_KEYBOARD: "input-keyboard"}
+
 _LSUSB_FULL = """\
 Bus 001 Device 002: ID 1d6b:0002 Linux Foundation 2.0 root hub
 Bus 001 Device 004: ID 0bda:2838 Realtek Semiconductor Corp. RTL2838 DVB-T
@@ -87,6 +96,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "systemctl": (3, "inactive", ""),
             "irsend": (127, "", "Command not found."),
             "ir-ctl": (127, "", "Command not found."),
+            "bluetoothctl": (127, "", "Command not found."),
         }
     if mode_name == "mixed":
         return {
@@ -100,6 +110,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
             "systemctl": (0, "active", ""),
             "irsend": (0, "", ""),
             "ir-ctl": (0, "", ""),
+            "bluetoothctl": (0, "", ""),
         }
     # "pass"
     return {
@@ -112,6 +123,7 @@ def _table(mode_name: str) -> dict[str, tuple[int, str, str]]:
         "systemctl": (0, "active", ""),
         "irsend": (0, "", ""),
         "ir-ctl": (0, "", ""),
+        "bluetoothctl": (0, "", ""),
     }
 
 
@@ -133,6 +145,24 @@ def command(argv: list[str]) -> tuple[int, str, str] | None:
         if m == "mixed":
             return 0, "throttled=0x60000", ""       # historical only
         return 0, "throttled=0x0", ""
+
+    # bluetoothctl is one binary standing in for a dozen subcommands; "pass" and
+    # "mixed" both get a working stack with two fake devices so Discovery,
+    # Pairing and Connection can all be exercised off-device. "fail" already
+    # reports the binary itself as missing via _table(), so nothing further to
+    # special-case there.
+    if binary == "bluetoothctl" and mode() != "fail":
+        if "devices" in argv and "paired-devices" not in argv:
+            return 0, _BT_DEVICES, ""
+        if "paired-devices" in argv:
+            return 0, _BT_PAIRED, ""
+        if "info" in argv:
+            address = argv[-1]
+            icon = _BT_ICONS.get(address, "unknown")
+            return 0, f"Device {address}\n\tIcon: {icon}\n\tPaired: {'yes' if address == _BT_KEYBOARD else 'no'}", ""
+        # scan / power / pair / trust / connect / disconnect / remove: a bare
+        # success is enough -- callers care about the return code, not stdout.
+        return 0, "", ""
     return result
 
 

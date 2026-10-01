@@ -164,7 +164,31 @@ python3 -m pip install -r requirements.txt
 python3 src/main.py
 ```
 
+### Updating
 
+Three ways to get a later commit onto a Pi that's already set up, from
+least to most hands-off:
+
+* **By hand**, over SSH or on the device directly: `./scripts/pipui-update.sh`.
+  Fetches, fast-forwards (never force -- a non-fast-forward stops and tells you
+  to sort it out rather than discarding anything), reinstalls dependencies only
+  if a `requirements.txt` changed, and restarts `pipui-web` if it's running as
+  a service.
+
+* **Push-to-deploy** from your dev machine: `./scripts/deploy.ps1` pushes the
+  current branch to GitHub, then SSHes in and runs the script above for you --
+  one command to ship a change. Needs SSH key auth to the Pi set up already;
+  see the script's own header.
+
+* **Scheduled autoupdate**, no push required: install `scripts/pipui-update.timer`
+  alongside `pipui-update.service` and the Pi checks GitHub on its own (every
+  15 minutes by default). Off by default -- both unit files explain how to turn
+  it on, and what it trades off (an update mid-session restarts the dashboard).
+
+All three end up running the same script, so only `pipui-update.sh` has the
+actual update logic; the other two just trigger it differently. All three also
+need the passwordless-sudo rule in that script's header, since none of them
+have a terminal to type a password into.
 
 ## Web dashboard
 

@@ -1,0 +1,27 @@
+# Oneshot unit that runs scripts/pipui-update.sh. Paired with pipui-update.timer
+# for true unattended autoupdate (the Pi checks GitHub on its own schedule,
+# rather than waiting for scripts/deploy.ps1 to push a commit); install the
+# timer too, or this unit just sits there doing nothing.
+#
+# Needs the passwordless-sudo rule described in pipui-update.sh's own header --
+# a timer has no terminal to type a password into.
+#
+# Install:
+#
+#   sed -e "s|%USER%|$USER|g" -e "s|%REPO%|$HOME/RP_UI_App|g" \
+#       scripts/pipui-update.service | sudo tee /etc/systemd/system/pipui-update.service
+#   sudo systemctl daemon-reload
+#
+# Logs:  journalctl -u pipui-update -f
+
+[Unit]
+Description=Pull the latest PIP-UI code and restart the dashboard
+Documentation=file://%REPO%/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%USER%
+WorkingDirectory=%REPO%
+ExecStart=%REPO%/scripts/pipui-update.sh

@@ -15,6 +15,12 @@ Security model -- the important part of this file:
 
 Processes are started in their own session so stopping one cannot signal the
 dashboard itself, and so the whole process group can be cleaned up.
+
+A ``kind: link`` entry is not a process at all -- it is a tile that opens
+``url`` in a new tab, for a tool that lives on another machine (e.g. a WiFi
+sensing app running on a separate Kali box). It never reaches ``launch()`` or
+``Popen``; the frontend navigates to it directly, so it carries none of the
+argv/allowlist machinery above.
 """
 
 from __future__ import annotations
@@ -51,9 +57,10 @@ class Tool:
     name: str
     icon: str = "antenna"
     category: str = "Tools"
-    kind: str = "launch"            # "launch" | "builtin"
+    kind: str = "launch"            # "launch" | "builtin" | "link"
     view: str = ""                  # for builtin tiles
     argv: tuple[str, ...] = ()
+    url: str = ""                   # for link tiles
     note: str = ""
     root: bool = False
 
@@ -105,8 +112,11 @@ def load_tools() -> tuple[list[Tool], str]:
             continue
         argv = _coerce_argv(entry.get("argv"))
         kind = entry.get("kind", "launch")
+        url = str(entry.get("url", ""))
         if kind == "launch" and not argv:
             continue                                  # unlaunchable: skip rather than half-show
+        if kind == "link" and not url:
+            continue                                  # no destination: skip rather than half-show
         tools.append(
             Tool(
                 id=str(entry["id"]),
@@ -116,6 +126,7 @@ def load_tools() -> tuple[list[Tool], str]:
                 kind=kind,
                 view=str(entry.get("view", "")),
                 argv=argv,
+                url=url,
                 note=str(entry.get("note", "")),
                 root=bool(entry.get("root", False)),
             )
@@ -150,7 +161,7 @@ class Launcher:
                 self._running.pop(tool_id, None)
 
     def available(self, tool: Tool) -> bool:
-        if tool.kind == "builtin":
+        if tool.kind in ("builtin", "link"):
             return True
         if sim.active():
             return sim.mode() != "fail"
@@ -173,6 +184,7 @@ class Launcher:
                     "kind": tool.kind,
                     "view": tool.view,
                     "cmd": " ".join(tool.argv),
+                    "url": tool.url,
                     "note": tool.note,
                     "root": tool.root,
                     "available": self.available(tool),

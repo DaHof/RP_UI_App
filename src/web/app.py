@@ -25,7 +25,6 @@ for _entry in (str(_SRC_DIR), str(_WEB_DIR)):
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-import json  # noqa: E402
 import os  # noqa: E402
 import threading  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
@@ -36,11 +35,14 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from starlette.concurrency import run_in_threadpool  # noqa: E402
 
+import btweb  # noqa: E402
 import hardware  # noqa: E402
 import irweb  # noqa: E402
+import mmwave  # noqa: E402
 import paths  # noqa: E402
 import pins as pins_module  # noqa: E402
 import probes  # noqa: E402
+import settings as settings_module  # noqa: E402
 import shell  # noqa: E402
 import sim  # noqa: E402
 from health import monitor  # noqa: E402
@@ -57,9 +59,11 @@ async def lifespan(app: FastAPI):
     with _store_lock:
         store.load()
     hardware.service.start()
+    mmwave.service.start()
     monitor.start()
     yield
     monitor.stop()
+    mmwave.service.stop()
     hardware.service.stop()
     launcher.stop_all()
 
@@ -209,6 +213,18 @@ async def simulate_tag(request: SimulateRequest):
             detail="Simulation requires the mock reader; hardware reader is active",
         )
     return {"ok": True, "recent": hardware.service.recent()}
+
+
+# ---------------------------------------------------------------------------
+# mmWave radar (LD2450)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/mmwave/targets")
+async def mmwave_targets():
+    return {
+        "reader": mmwave.service.status.as_dict() | {"polling": mmwave.service.polling},
+        **mmwave.service.snapshot(),
+    }
 
 
 @app.get("/api/library")
@@ -382,18 +398,89 @@ async def ir_delete_remote(name: str):
 
 
 # ---------------------------------------------------------------------------
-# Settings (read-only view of what the Tkinter app owns)
+# Settings: feature toggles -- shared with the Tkinter app via the same file
 # ---------------------------------------------------------------------------
+
+class SettingsRequest(BaseModel):
+    features: dict[str, bool] | None = None
+    log_enabled: bool | None = None
+
 
 @app.get("/api/settings")
 async def get_settings():
-    try:
-        data = json.loads(paths.SYSTEM_SETTINGS_JSON.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        data = {}
-    except Exception as exc:
-        return {"error": str(exc), "settings": {}}
-    return {"error": "", "settings": data}
+    return settings_module.snapshot()
+
+
+@app.put("/api/settings")
+async def put_settings(request: SettingsRequest):
+    return settings_module.save(request.features, request.log_enabled)
+
+
+# ---------------------------------------------------------------------------
+# Bluetooth: Discovery, Pairing, Connection -- the real parts of the Tkinter
+# screen. "Test Audio", Library/Save Device and Shortcuts set a status label
+# and do nothing else in Tkinter either, so there is nothing to port for them.
+# ---------------------------------------------------------------------------
+
+class BTAddressRequest(BaseModel):
+    address: str
+
+
+class BTPowerRequest(BaseModel):
+    on: bool
+
+
+@app.post("/api/bt/scan")
+async def bt_scan():
+    ok, message, devices = await run_in_threadpool(btweb.scan)
+    return {"ok": ok, "message": message, "devices": devices}
+
+
+@app.get("/api/bt/paired")
+async def bt_paired():
+    return {"devices": await run_in_threadpool(btweb.paired)}
+
+
+@app.post("/api/bt/power")
+async def bt_power(request: BTPowerRequest):
+    ok, message = await run_in_threadpool(btweb.power, request.on)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/pair")
+async def bt_pair(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.pair, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/trust")
+async def bt_trust(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.trust, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/connect")
+async def bt_connect(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.connect, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/disconnect")
+async def bt_disconnect(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.disconnect, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/remove")
+async def bt_remove(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.remove, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/bt/auto")
+async def bt_auto(request: BTAddressRequest):
+    ok, message = await run_in_threadpool(btweb.auto_pair_and_connect, request.address)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
 
 
 # ---------------------------------------------------------------------------

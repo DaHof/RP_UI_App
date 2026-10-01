@@ -1,0 +1,31 @@
+# Runs pipui-update.service on a schedule -- true autoupdate, no push needed.
+# This is the opt-in alternative to scripts/deploy.ps1: with this enabled the
+# Pi checks GitHub for new commits on its own; with deploy.ps1 you trigger an
+# update by hand instead. Both can coexist -- a push just arrives sooner than
+# the next tick. Not enabled by anything else; it does nothing until you
+# `systemctl enable --now` it.
+#
+# Worth knowing before you enable it: an update mid-session restarts the
+# dashboard (and, with Chromium in --kiosk, briefly shows its error page while
+# the backend comes back up), so this trades a little live-with-it ugliness
+# for not having to remember to push updates.
+#
+# Install (after pipui-update.service -- see its own header):
+#
+#   sudo cp scripts/pipui-update.timer /etc/systemd/system/pipui-update.timer
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pipui-update.timer
+#   systemctl list-timers pipui-update.timer   # confirm it's scheduled
+#
+# To go back to push-only: sudo systemctl disable --now pipui-update.timer
+
+[Unit]
+Description=Periodically check for PIP-UI updates
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

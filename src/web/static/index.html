@@ -218,6 +218,17 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
 
+/* ---- mmwave radar scope: same recessed well as .readout, sized for the
+   LD2450's 30-degree each-side fan rather than a full circle. ---- */
+.scope{background:var(--recess);border:1px solid var(--metal-lo);border-radius:6px;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.6);width:100%;aspect-ratio:4/3;display:block}
+.scope .grid-line{fill:none;stroke:var(--metal);stroke-width:1}
+.scope .edge-line{fill:none;stroke:var(--metal);stroke-width:1;stroke-dasharray:3 3}
+.scope .range-lbl{font-family:var(--font-mono);font-size:7.5px;fill:var(--ink-faint)}
+.scope .blip{fill:var(--accent);filter:drop-shadow(0 0 4px var(--accent))}
+.scope .blip-ring{fill:none;stroke:var(--accent);stroke-width:1;opacity:.45}
+.scope .blip-lbl{font-family:var(--font-mono);font-size:8.5px;fill:var(--ink)}
+
 /* ---- tiles ---- */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
 .mod{position:relative;display:flex;flex-direction:column;gap:4px;padding:9px 10px;
@@ -288,6 +299,18 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
   border:1px solid var(--metal);border-top-color:var(--metal-hi)}
 .pill[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .pill[disabled]{opacity:.4;cursor:not-allowed}
+
+/* ---- toggle switch (feature flags) ---- */
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 2px;border-bottom:1px solid var(--metal-lo)}
+.toggle:last-child{border-bottom:0}
+.toggle .label{font-size:13px;color:var(--ink)}
+.swbtn{width:46px;height:26px;flex:none;border-radius:13px;cursor:pointer;position:relative;
+  background:var(--recess);border:1px solid var(--metal);padding:0}
+.swbtn::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;
+  border-radius:50%;background:var(--ink-faint);transition:transform .14s ease,background .14s ease}
+.swbtn[aria-pressed="true"]{border-color:var(--accent)}
+.swbtn[aria-pressed="true"]::after{transform:translateX(20px);background:var(--accent)}
 
 .banner{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--accent);
   background:var(--recess);border:1px solid var(--metal);border-radius:7px;
@@ -394,7 +417,11 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
  <symbol id="i-usb" viewBox="0 0 24 24"><circle cx="12" cy="20" r="1.6"/><path d="M12 18.4V5"/><path d="M12 5 9.6 8h4.8z" fill="currentColor"/><path d="M12 12l4-2.5V7M12 14.5 8 12V9.6"/></symbol>
  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/></symbol>
  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+ <symbol id="i-external" viewBox="0 0 24 24"><path d="M9 6H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4M14 4h6v6M10 14 20 4"/></symbol>
  <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+ <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M6 4v6M6 14v6M12 4v12M12 20v0M18 4v3M18 11v9"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="17.5" r="2"/><circle cx="18" cy="8.5" r="2"/></symbol>
+ <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/></symbol>
+ <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 18h2v2H4zM9 14h2v6H9zM14 9h2v11h-2zM19 4h2v16h-2z" fill="currentColor" stroke="none"/></symbol>
 </defs></svg>
 
 <!-- boot splash: rendered visible, then faded OUT. Never gate content behind an
@@ -425,6 +452,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
     <section class="view" id="v-proxmark"></section>
     <section class="view" id="v-diag"></section>
     <section class="view" id="v-pins"></section>
+    <section class="view" id="v-mmwave"></section>
+    <section class="view" id="v-settings"></section>
     <section class="view" id="v-themes"></section>
   </main>
 </div>
@@ -504,7 +533,7 @@ function confirmAction({ title, body, detail, confirmLabel = "Confirm" }){
 /* ===========================================================================
    8. API
    =========================================================================== */
-const state = { health:null, tools:[], toolsErr:"", view:"home", booted:false };
+const state = { health:null, tools:[], toolsErr:"", settings:null, view:"home", booted:false };
 
 async function api(path, opts){
   const res = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts });
@@ -545,13 +574,20 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
 const TITLES = {
   home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
   bluetooth:"Bluetooth", proxmark:"Proxmark3", diag:"Diagnostics",
-  pins:"GPIO Pins", themes:"Themes",
+  pins:"GPIO Pins", mmwave:"mmWave Radar", settings:"Settings", themes:"Themes",
 };
+
+/* Builtin tile id -> the Tkinter feature-flag name that gates it. Only flags
+   with a real 1:1 web tile are wired up; "Scan" and "WiFi" don't map onto any
+   single builtin tile here (NFC scanning has no separate tile, and WiFi's
+   launch tools -- Kismet, Wifite -- aren't flag-gated software either). */
+const FEATURE_GATES = { bluetooth:"Bluetooth", proxmark:"Proxmark", ir:"IR" };
 function go(view, push = true){
   if (!TITLES[view]) view = "home";
   // Leaving IR must stop its sweep/capture pollers, or they keep firing against
   // a view nobody is looking at.
   if (state.view === "ir" && view !== "ir") stopIRTimers();
+  if (state.view === "mmwave" && view !== "mmwave") stopRadarTimer();
   state.view = view;
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
@@ -631,9 +667,15 @@ RENDER.home = () => {
     return;
   }
 
+  const features = state.settings?.features || {};
+  const visible = state.tools.filter(t => {
+    const gate = FEATURE_GATES[t.id];
+    return !gate || features[gate] !== false;
+  });
+
   const cats = [];
   const byCat = {};
-  for (const t of state.tools){
+  for (const t of visible){
     if (!byCat[t.category]){ byCat[t.category] = []; cats.push(t.category); }
     byCat[t.category].push(t);
   }
@@ -647,20 +689,20 @@ RENDER.home = () => {
 };
 
 function tile(t){
-  const cls = t.kind === "builtin" ? "" : !t.available ? "off" : t.running ? "on" : "";
+  const passive = t.kind === "builtin" || t.kind === "link";
+  const cls = passive ? "" : !t.available ? "off" : t.running ? "on" : "";
   const node = el(`<button class="mod ${cls}">
     <div class="top">${ic(t.icon)}
-      ${t.kind === "builtin"
-        ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
+      ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
+        : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
         : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
     </div>
     <div class="nm">${esc(t.name)}</div>
-    ${t.kind === "builtin"
-      ? `<div class="cmd">on-device</div>`
-      : t.running
-        ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
-        : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
-    ${(!t.available && t.kind !== "builtin") || t.root
+    ${t.kind === "builtin" ? `<div class="cmd">on-device</div>`
+      : t.kind === "link" ? `<div class="cmd">${esc(t.note || t.url)}</div>`
+      : t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
+      : `<div class="cmd">${esc(t.note || t.cmd)}</div>`}
+    ${(!t.available && !passive) || t.root
       ? `<div style="position:absolute;top:9px;right:26px">
            <span class="tag">${!t.available ? "absent" : "root"}</span></div>`
       : ""}
@@ -668,6 +710,7 @@ function tile(t){
 
   node.onclick = () => {
     if (t.kind === "builtin") return go(t.view);
+    if (t.kind === "link") return window.open(t.url, "_blank", "noopener");
     if (!t.available) return toast(`${t.name} is not installed`);
     return t.running ? stopTool(t) : launchTool(t);
   };
@@ -1292,16 +1335,314 @@ RENDER.pins = async () => {
     </div>`;
 };
 
-/* ---- stubs: honest about what is not wired yet -------------------------- */
-RENDER.bluetooth = () => {
-  $("#v-bluetooth").innerHTML = `
-    <div class="banner">${ic("alert")}<div>
-      <b>Bluetooth is not wired to this dashboard yet.</b><br>
-      A BlueZ client exists at <span class="mono">src/bluetooth/bluez_client.py</span>, but its
-      subprocess calls have no timeout, so calling it from a request could hang the server.
-      It needs a guarded wrapper before it is exposed here.</div></div>
-    <div class="empty">Use the Tkinter app's Bluetooth screen in the meantime.</div>`;
+/* ---- Settings: feature toggles -------------------------------------------
+   The one piece of Tkinter's System > Features tab that is actually real:
+   these flags are read from and written to the same data/system_settings.json
+   both apps share, so a toggle here is visible in Tkinter too (and vice versa,
+   within 5s via the normal poll). Tkinter's "Debug Window" toggle is left out
+   -- it controls a Tk-local debug console with no web equivalent. */
+const FEATURE_LABELS = [
+  ["Scan", "NFC scanning", "No dedicated web tile yet -- NFC / RFID always scans"],
+  ["IR", "Infrared", "Hides the Infrared tile on Home when off"],
+  ["Bluetooth", "Bluetooth", "Hides the Bluetooth tile on Home when off"],
+  ["WiFi", "Wi-Fi", "Kismet / Wifite tiles are not gated by this flag"],
+  ["Proxmark", "Proxmark3", "Hides the Proxmark3 tile on Home when off"],
+];
+
+RENDER.settings = async () => {
+  const host = $("#v-settings");
+  host.innerHTML = `<div class="empty">Loading…</div>`;
+  let data;
+  try { data = await api("/api/settings"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+  state.settings = data;
+  paintSettings(data);
 };
+
+function paintSettings(data){
+  const host = $("#v-settings");
+  const f = data.features || {};
+  host.innerHTML = `
+    <div class="banner">${ic("alert")}<div>
+      Shared with the Tkinter app's System → Features tab via the same
+      <span class="mono">data/system_settings.json</span>. A change here shows up
+      there (and vice versa) within a few seconds.</div></div>
+    <div class="panel">
+      <h3>Modules</h3>
+      ${FEATURE_LABELS.map(([key, label, hint]) => `
+        <div class="toggle">
+          <div><div class="label">${esc(label)}</div>
+            <div style="font-size:10.5px;color:var(--ink-faint)">${esc(hint)}</div></div>
+          <button class="swbtn" data-feature="${key}" aria-pressed="${f[key] !== false}"></button>
+        </div>`).join("")}
+    </div>
+    <div class="panel">
+      <div class="toggle" style="border-bottom:0">
+        <div><div class="label">Log to files</div>
+          <div style="font-size:10.5px;color:var(--ink-faint)">data/logs/*.log, 1 MiB rotation</div></div>
+        <button class="swbtn" id="logToggle" aria-pressed="${!!data.log_enabled}"></button>
+      </div>
+    </div>`;
+
+  const pending = { features: { ...f }, log_enabled: !!data.log_enabled };
+  host.querySelectorAll("[data-feature]").forEach(btn => {
+    btn.onclick = async () => {
+      const key = btn.dataset.feature;
+      const next = btn.getAttribute("aria-pressed") !== "true";
+      btn.setAttribute("aria-pressed", String(next));
+      pending.features[key] = next;
+      await saveSettings(pending);
+    };
+  });
+  $("#logToggle").onclick = async (e) => {
+    const next = e.currentTarget.getAttribute("aria-pressed") !== "true";
+    e.currentTarget.setAttribute("aria-pressed", String(next));
+    pending.log_enabled = next;
+    await saveSettings(pending);
+  };
+}
+
+async function saveSettings(pending){
+  try {
+    const res = await api("/api/settings", { method:"PUT", body: JSON.stringify(pending) });
+    state.settings = res;
+    toast("Saved");
+    if (res.error) toast(res.error);
+  } catch (e){
+    toast(e.message);
+  }
+}
+
+/* ---- mmWave radar (LD2450) -----------------------------------------------
+   Forward-facing fan, not a full circle -- the sensor's FOV is +/-60deg and it
+   reports every target on every frame, so unlike the IR "sweep" or the WiFi
+   radars this project looked at, there is no rotating beam to animate: a fake
+   sweep line would just be decoration on top of a sensor that already sees
+   the whole fan at once. */
+const RADAR_RANGE_MM = 4000;   // scope's forward extent; matches the LD2450's practical indoor range
+const RADAR_HALF_DEG = 60;
+let radarTimer = null;
+function stopRadarTimer(){ clearInterval(radarTimer); radarTimer = null; }
+
+function radarPoint(x_mm, y_mm){
+  // viewBox 0 0 440 330, vertex at (220,322), forward = -Y in SVG space.
+  const scale = 300 / RADAR_RANGE_MM;
+  return { x: 220 + x_mm * scale, y: 322 - y_mm * scale };
+}
+
+function radarScopeSvg(){
+  const rings = [1000, 2000, 3000, 4000].map(r => {
+    const rad = r / RADAR_RANGE_MM * 300;
+    const a = RADAR_HALF_DEG * Math.PI / 180;
+    const x0 = 220 - rad * Math.sin(a), y0 = 322 - rad * Math.cos(a);
+    const x1 = 220 + rad * Math.sin(a), y1 = 322 - rad * Math.cos(a);
+    const lbl = radarPoint(0, r);
+    return `<path class="grid-line" d="M${x0.toFixed(1)} ${y0.toFixed(1)}
+      A${rad.toFixed(1)} ${rad.toFixed(1)} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}"/>
+      <text class="range-lbl" x="${(lbl.x + 4).toFixed(1)}" y="${(lbl.y - 3).toFixed(1)}">${r/1000}m</text>`;
+  }).join("");
+  const edgeA = radarPoint(-RADAR_RANGE_MM * Math.sin(RADAR_HALF_DEG * Math.PI / 180),
+                            RADAR_RANGE_MM * Math.cos(RADAR_HALF_DEG * Math.PI / 180));
+  const edgeB = radarPoint(RADAR_RANGE_MM * Math.sin(RADAR_HALF_DEG * Math.PI / 180),
+                            RADAR_RANGE_MM * Math.cos(RADAR_HALF_DEG * Math.PI / 180));
+  return `<svg class="scope" viewBox="0 0 440 330" id="radarSvg">
+    ${rings}
+    <line class="edge-line" x1="220" y1="322" x2="${edgeA.x.toFixed(1)}" y2="${edgeA.y.toFixed(1)}"/>
+    <line class="edge-line" x1="220" y1="322" x2="${edgeB.x.toFixed(1)}" y2="${edgeB.y.toFixed(1)}"/>
+    <g id="radarBlips"></g>
+  </svg>`;
+}
+
+function paintRadarBlips(targets){
+  const g = $("#radarBlips");
+  if (!g) return;
+  g.innerHTML = targets.map(t => {
+    const p = radarPoint(t.x_mm, t.y_mm);
+    return `<circle class="blip-ring" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9"/>
+      <circle class="blip" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5"/>
+      <text class="blip-lbl" x="${(p.x + 7).toFixed(1)}" y="${(p.y - 7).toFixed(1)}">
+        ${(t.distance_mm/1000).toFixed(1)}m</text>`;
+  }).join("");
+}
+
+RENDER.mmwave = async () => {
+  const host = $("#v-mmwave");
+  host.innerHTML = `<div class="empty">Reading radar status…</div>`;
+  let d;
+  try { d = await api("/api/mmwave/targets"); }
+  catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
+
+  const r = d.reader;
+  host.innerHTML = `
+    ${r.degraded ? `<div class="banner bad">${ic("alert")}<div>
+      <b>LD2450 unavailable — running the mock reader.</b><br>${esc(r.reason)}</div></div>` : ""}
+    ${r.active === "mock" && !r.degraded ? `<div class="banner">${ic("alert")}
+      <div>Mock reader active — two synthetic targets, no sensor required.</div></div>` : ""}
+    ${!r.polling && r.started ? `<div class="banner">${ic("alert")}
+      <div>Reader started but its read thread is no longer running.</div></div>` : ""}
+    <div class="two">
+      <div class="panel">
+        <h3>Scope</h3>
+        ${radarScopeSvg()}
+      </div>
+      <div class="panel">
+        <h3>Reader</h3>
+        <div class="row"><span class="k">Requested</span><span class="v">${esc(r.requested)}</span></div>
+        <div class="row"><span class="k">Active</span><span class="v">${esc(r.active)}</span></div>
+        <div class="row"><span class="k">Started</span><span class="v">${r.started ? "yes" : "no"}</span></div>
+        <div class="row"><span class="k">Reading</span><span class="v">${r.polling ? "yes" : "no"}</span></div>
+        <h3 style="margin-top:12px" id="targetHdr">Targets (0)</h3>
+        <div id="targetList"><div class="empty" style="padding:12px">Nothing in range.</div></div>
+      </div>
+    </div>`;
+
+  const paint = (data) => {
+    paintRadarBlips(data.targets);
+    $("#targetHdr").textContent = `Targets (${data.targets.length})`;
+    $("#targetList").innerHTML = data.targets.length
+      ? data.targets.map(t => `<div class="row">
+          <span class="k mono">#${t.slot}</span>
+          <span class="v">${(t.distance_mm/1000).toFixed(2)}m, ${t.speed_mm_s} mm/s</span></div>`).join("")
+      : `<div class="empty" style="padding:12px">Nothing in range.</div>`;
+  };
+  paint(d);
+
+  stopRadarTimer();
+  radarTimer = setInterval(async () => {
+    try { paint(await api("/api/mmwave/targets")); }
+    catch { stopRadarTimer(); }
+  }, 150);
+};
+
+/* ---- Bluetooth: Discovery, Pairing, Connection consolidated into one screen.
+   Tkinter splits this across six tabs, but half of them -- Test Audio, Library's
+   Save Device, all of Shortcuts -- just set a status label with nothing behind
+   it (confirmed by reading app.py directly). This covers everything that is
+   actually backed by a bluetoothctl call: scan, known/paired devices, power,
+   pair, trust, connect, disconnect, forget, and the Audio tab's one real
+   action, "auto pair + play" (pair + trust + connect in sequence). ------- */
+const btState = { devices:[], selected:null };
+
+RENDER.bluetooth = async () => {
+  let paired = [];
+  try { paired = (await api("/api/bt/paired")).devices || []; } catch {}
+  if (!btState.devices.length) btState.devices = paired;
+  paintBluetooth();
+};
+
+function btDeviceIcon(type){
+  const t = (type || "").toLowerCase();
+  if (t.includes("audio")) return "activity";
+  if (t.includes("input") || t.includes("keyboard") || t.includes("mouse")) return "terminal";
+  return "bt";
+}
+
+function paintBluetooth(message){
+  const sel = btState.selected;
+  $("#v-bluetooth").innerHTML = `
+    ${message ? `<div class="banner">${ic("alert")}<div>${esc(message)}</div></div>` : ""}
+    <div class="panel">
+      <div class="btnrow" style="margin:0 0 4px">
+        <button class="btn pri" id="btScan">${ic("refresh")} Scan (6s)</button>
+        <button class="btn" id="btPowerOn">${ic("power")} Power on</button>
+        <button class="btn" id="btPowerOff">${ic("power")} Power off</button>
+      </div>
+      <div class="list" style="margin-top:8px">
+        ${btState.devices.length ? btState.devices.map(d => `
+          <button class="listitem" data-addr="${esc(d.address)}"
+                  ${sel?.address === d.address ? 'style="color:var(--accent)"' : ""}>
+            ${ic(btDeviceIcon(d.type))}<span>${esc(d.name || "Unknown device")}</span>
+            <span class="sub2">${esc(d.address)}</span></button>`).join("")
+          : `<div class="empty">No devices yet. Scan, or Known Devices.</div>`}
+      </div>
+      <div class="btnrow"><button class="btn" id="btKnown">Known devices</button></div>
+    </div>
+    <div class="panel">
+      <h3>Selected device</h3>
+      ${sel ? `
+        <div class="row"><span class="k">${esc(sel.name || "Unknown device")}</span>
+          <span class="v mono">${esc(sel.address)}</span></div>
+        <div class="row"><span class="k">Type</span><span class="v">${esc(sel.type || "Unknown")}</span></div>
+        <div class="btnrow">
+          <button class="btn" id="btPair">${ic("link")} Pair</button>
+          <button class="btn" id="btTrust">${ic("save")} Trust</button>
+          <button class="btn pri" id="btConnect">${ic("play")} Connect</button>
+          <button class="btn" id="btDisconnect">${ic("stop")} Disconnect</button>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="btAuto">${ic("refresh")} Auto pair + connect</button>
+          <button class="btn danger" id="btForget">${ic("trash")} Forget</button>
+        </div>`
+        : `<div class="empty">Pick a device from the list.</div>`}
+    </div>`;
+
+  $("#v-bluetooth").querySelectorAll("[data-addr]").forEach(b => {
+    b.onclick = () => {
+      btState.selected = btState.devices.find(d => d.address === b.dataset.addr) || null;
+      paintBluetooth();
+    };
+  });
+
+  $("#btScan").onclick = async () => {
+    paintBluetooth("Scanning for 6 seconds…");
+    try {
+      const res = await api("/api/bt/scan", { method:"POST" });
+      btState.devices = res.devices || [];
+      paintBluetooth(res.message);
+    } catch (e){ paintBluetooth(e.message); }
+  };
+  $("#btKnown").onclick = async () => {
+    try {
+      btState.devices = (await api("/api/bt/paired")).devices || [];
+      paintBluetooth("Showing known devices");
+    } catch (e){ toast(e.message); }
+  };
+  $("#btPowerOn").onclick = () => btPower(true);
+  $("#btPowerOff").onclick = () => btPower(false);
+
+  const addr = () => btState.selected?.address;
+  const run = async (path, okMsg) => {
+    if (!addr()) return;
+    try {
+      const res = await api(path, { method:"POST", body: JSON.stringify({ address: addr() }) });
+      toast(res.message || okMsg);
+    } catch (e){ toast(e.message); }
+  };
+  const pair = $("#btPair");
+  if (pair) pair.onclick = () => run("/api/bt/pair");
+  const trust = $("#btTrust");
+  if (trust) trust.onclick = () => run("/api/bt/trust");
+  const connect = $("#btConnect");
+  if (connect) connect.onclick = () => run("/api/bt/connect");
+  const disconnect = $("#btDisconnect");
+  if (disconnect) disconnect.onclick = () => run("/api/bt/disconnect");
+  const auto = $("#btAuto");
+  if (auto) auto.onclick = () => run("/api/bt/auto");
+  const forget = $("#btForget");
+  if (forget) forget.onclick = async () => {
+    const target = addr();
+    const ok = await confirmAction({
+      title:"Forget this device?",
+      body:"It will need to be paired again to reconnect.",
+      detail:`${btState.selected.name || ""} ${target}`.trim(),
+      confirmLabel:"Forget",
+    });
+    if (!ok) return;
+    await run("/api/bt/remove");
+    btState.selected = null;
+    btState.devices = btState.devices.filter(d => d.address !== target);
+    paintBluetooth();
+  };
+}
+
+async function btPower(on){
+  try {
+    const res = await api("/api/bt/power", { method:"POST", body: JSON.stringify({ on }) });
+    paintBluetooth(res.message);
+  } catch (e){ paintBluetooth(e.message); }
+}
+
+/* ---- stubs: honest about what is not wired yet -------------------------- */
 RENDER.proxmark = () => {
   $("#v-proxmark").innerHTML = `
     <div class="banner">${ic("alert")}<div>
@@ -1383,12 +1724,17 @@ let failures = 0;
 async function poll(){
   if (document.visibilityState !== "visible") return;
   try {
-    const [health, tools] = await Promise.all([api("/api/health"), api("/api/tools")]);
+    const [health, tools, settings] = await Promise.all(
+      [api("/api/health"), api("/api/tools"), api("/api/settings")]
+    );
     state.health = health;
     state.tools = tools.tools || [];
     state.toolsErr = tools.error || "";
+    state.settings = settings;
     failures = 0;
     paintPresence();
+    // Feature flags can flip from the Tkinter side too, so Home re-filters on
+    // every poll, not just after a save made from this page.
     if (state.view === "home") RENDER.home();
   } catch {
     failures++;
@@ -1417,6 +1763,8 @@ async function boot(){
     state.tools = tools.tools || [];
     state.toolsErr = tools.error || "";
   } catch {}
+
+  try { state.settings = await api("/api/settings"); } catch {}
 
   paintPresence();
   go(routeFromHash(), false);

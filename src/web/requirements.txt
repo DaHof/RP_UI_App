@@ -5,3 +5,7 @@
 fastapi
 uvicorn
 PyYAML
+
+# LD2450 mmWave radar (src/web/mmwave.py). Only needed for MMWAVE_READER=serial;
+# the dashboard runs fine without it and falls back to the mock reader.
+pyserial
