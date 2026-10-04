@@ -587,7 +587,15 @@ const state = { health:null, tools:[], toolsErr:"", settings:null, view:"home", 
 async function api(path, opts){
   const res = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail || body?.message || `HTTP ${res.status}`);
+  if (!res.ok) {
+    // Several endpoints (pm3 search/read) return a non-2xx for a normal
+    // negative result ("no tag found"), not just real failures -- the body
+    // still carries useful detail (raw output, parsed id, ...), so it rides
+    // along on the thrown Error instead of being dropped on the floor.
+    const err = new Error(body?.detail || body?.message || `HTTP ${res.status}`);
+    err.body = body;
+    throw err;
+  }
   return body;
 }
 
@@ -819,7 +827,12 @@ async function stopTool(t){
   } catch (e){ toast(e.message); }
 }
 
-/* ---- NFC ---------------------------------------------------------------- */
+/* ---- NFC ------------------------------------------------------------------
+   Dump and magic-UID-clone are untested against real hardware (no I2C/reader
+   attached in dev) -- see AdafruitPN532Reader.dump_mifare_classic and
+   .clone_uid_to_magic. They degrade to a clearly-labeled mock on this box. */
+const nfcState = { cloneUid: "", lastDump: "" };
+
 RENDER.nfc = async () => {
   const host = $("#v-nfc");
   host.innerHTML = `<div class="empty">Reading reader status…</div>`;
@@ -849,6 +862,17 @@ RENDER.nfc = async () => {
           <button class="btn pri" id="simBtn">${ic("play")} Simulate tag</button>
           <button class="btn" id="libBtn">${ic("card")} Library</button>
         </div>
+        ${last ? `<div class="btnrow" style="margin-top:8px">
+          <input type="text" id="nfcSaveName" placeholder="Name, e.g. Office Badge"
+                 style="flex:1;min-width:150px">
+          <button class="btn pri" id="nfcSaveBtn">${ic("save")} Save to library</button>
+        </div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn" id="nfcDumpBtn">${ic("refresh")} Dump (MIFARE Classic, default keys)</button>
+        </div>
+        ${nfcState.lastDump ? `<div class="row" style="margin-top:6px">
+          <span class="d">Dump captured (${nfcState.lastDump.length / 2} bytes) — will attach to the
+            next Save.</span></div>` : ""}` : ""}
       </div>
       <div class="panel">
         <h3>Reader</h3>
@@ -863,6 +887,28 @@ RENDER.nfc = async () => {
               <span class="v dim">${esc(ago(t.seen_at))}</span></div>`).join("")
           : `<div class="empty" style="padding:12px">Nothing yet.</div>`}
       </div>
+    </div>
+    <div class="panel">
+      <h3>Write NDEF text</h3>
+      <div class="btnrow">
+        <input type="text" id="nfcWriteText" placeholder="Text to write, e.g. a URL or note"
+               style="flex:1;min-width:150px">
+        <button class="btn pri" id="nfcWriteBtn">${ic("play")} Write to tag</button>
+      </div>
+      <div class="row" style="margin-top:6px"><span class="d">Hold a blank NTAG2xx tag to the
+        reader, then press Write. User memory starts at block 4.</span></div>
+    </div>
+    <div class="panel">
+      <h3>Clone UID to magic card</h3>
+      <div class="btnrow">
+        <input type="text" id="nfcCloneUid" placeholder="4-byte hex UID, e.g. 04A1B2C3"
+               value="${esc(nfcState.cloneUid)}" style="flex:1;min-width:150px" maxlength="8">
+        <button class="btn pri" id="nfcCloneBtn">${ic("save")} Clone to tag</button>
+      </div>
+      <div class="row" style="margin-top:6px"><span class="d">Needs a Gen1a "magic" blank — a stock
+        MIFARE Classic/NTAG UID can't be rewritten. Best-effort: the backdoor unlock sequence used
+        here is community-documented, not part of the reader library's own API, and hasn't been
+        verified against real hardware.</span></div>
     </div>`;
 
   $("#libBtn").onclick = () => go("library");
@@ -875,7 +921,56 @@ RENDER.nfc = async () => {
         body: JSON.stringify({ uid, tag_type:"MIFARE Classic 1K" }),
       });
       toast("Simulated tag detected");
+      nfcState.lastDump = "";
       RENDER.nfc();
+    } catch (e){ toast(e.message); }
+  };
+  const saveBtn = $("#nfcSaveBtn");
+  if (saveBtn) saveBtn.onclick = async () => {
+    const name = $("#nfcSaveName").value.trim();
+    try {
+      const res = await api("/api/library", {
+        method:"POST",
+        body: JSON.stringify({
+          uid: last.uid,
+          tag_type: last.tag_type,
+          technologies: last.technologies,
+          friendly_name: name || undefined,
+          dump_hex: nfcState.lastDump || undefined,
+        }),
+      });
+      toast(`Saved as ${res.friendly_name}${nfcState.lastDump ? " (with dump)" : ""}`);
+      nfcState.lastDump = "";
+    } catch (e){ toast(e.message); }
+  };
+  const dumpBtn = $("#nfcDumpBtn");
+  if (dumpBtn) dumpBtn.onclick = async () => {
+    toast("Dumping — trying default keys on all 16 sectors…");
+    try {
+      const res = await api("/api/nfc/dump", { method:"POST" });
+      nfcState.lastDump = res.dump || "";
+      toast(res.message);
+      RENDER.nfc();
+    } catch (e){
+      nfcState.lastDump = e.body?.dump || "";
+      toast(e.message);
+    }
+  };
+  $("#nfcWriteBtn").onclick = async () => {
+    const text = $("#nfcWriteText").value;
+    if (!text.trim()) return toast("Enter some text to write first");
+    try {
+      const res = await api("/api/nfc/write", { method:"POST", body: JSON.stringify({ text }) });
+      toast(res.message);
+    } catch (e){ toast(e.message); }
+  };
+  $("#nfcCloneUid").oninput = (e) => { nfcState.cloneUid = e.target.value.trim().toUpperCase(); };
+  $("#nfcCloneBtn").onclick = async () => {
+    const uid = $("#nfcCloneUid").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{8}$/.test(uid)) return toast("UID must be 8 hex characters (4 bytes)");
+    try {
+      const res = await api("/api/nfc/clone-uid", { method:"POST", body: JSON.stringify({ uid }) });
+      toast(res.message);
     } catch (e){ toast(e.message); }
   };
 };
@@ -895,8 +990,11 @@ RENDER.library = async () => {
   }
   host.innerHTML = `<div class="panel"><h3>${data.count} saved tag${data.count === 1 ? "" : "s"}</h3>
     ${data.profiles.map(p => `<div class="row">
-      <span class="k">${esc(p.friendly_name || "(unnamed)")}</span>
+      <span class="k">${esc(p.friendly_name || "(unnamed)")}
+        <span class="dim" style="display:block;font-size:11px">${esc(p.tag_type)}${p.dump?.present ? " · dump saved" : ""}</span></span>
       <span class="v mono">${esc(p.uid)}</span>
+      <button class="btn" data-clone="${esc(p.id)}"
+              style="min-height:28px;padding:0 9px">${ic("play")} Clone</button>
       <button class="btn danger" data-del="${esc(p.id)}"
               style="min-height:28px;padding:0 9px">${ic("trash")}</button>
     </div>`).join("")}</div>`;
@@ -915,6 +1013,25 @@ RENDER.library = async () => {
       try { await api(`/api/library/${encodeURIComponent(id)}`, { method:"DELETE" });
             toast("Deleted"); RENDER.library(); }
       catch (e){ toast(e.message); }
+    };
+  });
+
+  // LF (Proxmark3/EM410x) entries clone via the Proxmark3 tile's own clone
+  // command; everything else is treated as an HF/PN532 tag and clones via
+  // UID-to-magic-card on the NFC tile. There's no "replay a saved dump"
+  // write path yet -- this only ever pushes the UID.
+  host.querySelectorAll("[data-clone]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-clone");
+      const profile = data.profiles.find(p => p.id === id);
+      if (!profile) return;
+      if (profile.category === "LF") {
+        pmState.emId = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        go("proxmark");
+      } else {
+        nfcState.cloneUid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        go("nfc");
+      }
     };
   });
 };
@@ -1957,11 +2074,11 @@ async function btPower(on){
   } catch (e){ paintBluetooth(e.message); }
 }
 
-/* ---- Proxmark3: Connect/Device Info, LF/HF search ------------------------
-   Clone/Write/Sniff/Script are still stubs in the Tkinter screen too (see
-   src/ui/app.py's ProxmarkScreen), so there is nothing real to port for
-   those yet -- this wires up only Connection + Read. */
-const pmState = { status: null, lastOutput: "" };
+/* ---- Proxmark3: Connect/Device Info, LF/HF search, EM410x clone ----------
+   HF clone, Sniff, and Script are still stubs in the Tkinter screen too (see
+   src/ui/app.py's ProxmarkScreen) -- this wires up Connection, Read, and the
+   one LF clone path the pm3 client actually supports as a single command. */
+const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7" };
 
 RENDER.proxmark = async () => {
   try { pmState.status = await api("/api/pm3/status"); } catch { pmState.status = null; }
@@ -1984,6 +2101,30 @@ function paintProxmark(message){
         <button class="btn" id="pmHF">HF search</button>
       </div>
     </div>
+    <div class="panel">
+      <h3>EM410x clone (125kHz)</h3>
+      <div class="d" style="margin-bottom:8px">Read a source EM410x tag to get its ID, swap in
+        a blank T55x7/Q5/EM4305 tag, then clone. Other LF tag types (HID, Hitag, ...) aren't
+        wired up here.</div>
+      <div class="btnrow">
+        <button class="btn" id="pmEmRead">${ic("refresh")} Read EM410x ID</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <input type="text" id="pmEmId" placeholder="10-hex-char ID, e.g. 0F0368568B"
+               value="${esc(pmState.emId)}" style="flex:1;min-width:150px" maxlength="10">
+        <select id="pmEmTarget">
+          <option value="t55x7" ${pmState.cloneTarget === "t55x7" ? "selected" : ""}>T55x7</option>
+          <option value="q5" ${pmState.cloneTarget === "q5" ? "selected" : ""}>Q5/T5555</option>
+          <option value="em4305" ${pmState.cloneTarget === "em4305" ? "selected" : ""}>EM4305/4469</option>
+        </select>
+        <button class="btn pri" id="pmEmClone">${ic("save")} Clone to tag</button>
+      </div>
+      ${pmState.emId ? `<div class="btnrow" style="margin-top:8px">
+        <input type="text" id="pmEmSaveName" placeholder="Name, e.g. Gate Fob"
+               style="flex:1;min-width:150px">
+        <button class="btn" id="pmEmSave">${ic("card")} Save to library</button>
+      </div>` : ""}
+    </div>
     <div class="panel"><h3>Output</h3>
       <pre class="mono" style="white-space:pre-wrap;margin:0">${esc(pmState.lastOutput || s?.raw || "No output yet.")}</pre>
     </div>`;
@@ -1999,10 +2140,63 @@ function paintProxmark(message){
       const res = await api(path, { method:"POST" });
       pmState.lastOutput = res.raw || "";
       paintProxmark(res.message === "ok" ? "" : res.message);
-    } catch (e){ paintProxmark(e.message); }
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      paintProxmark(e.message);
+    }
   };
   $("#pmLF").onclick = () => search("/api/pm3/read/lf", "LF search");
   $("#pmHF").onclick = () => search("/api/pm3/read/hf", "HF search");
+
+  $("#pmEmId").oninput = (e) => { pmState.emId = e.target.value.trim().toUpperCase(); };
+  $("#pmEmTarget").onchange = (e) => { pmState.cloneTarget = e.target.value; };
+
+  $("#pmEmRead").onclick = async () => {
+    paintProxmark("Reading EM410x…");
+    try {
+      const res = await api("/api/pm3/lf/em410x/read", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      pmState.emId = res.id || pmState.emId;
+      paintProxmark(res.message);
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmState.emId = e.body?.id || pmState.emId;
+      paintProxmark(e.message);
+    }
+  };
+  $("#pmEmClone").onclick = async () => {
+    const id = $("#pmEmId").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{10}$/.test(id)) return toast("ID must be 10 hex characters (5 bytes)");
+    paintProxmark(`Cloning ${id} to ${pmState.cloneTarget}…`);
+    try {
+      const res = await api("/api/pm3/lf/em410x/clone", {
+        method:"POST", body: JSON.stringify({ id, target: pmState.cloneTarget }),
+      });
+      pmState.lastOutput = res.raw || "";
+      paintProxmark(res.message);
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      paintProxmark(e.message);
+    }
+  };
+  const pmSave = $("#pmEmSave");
+  if (pmSave) pmSave.onclick = async () => {
+    const id = $("#pmEmId").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{10}$/.test(id)) return toast("ID must be 10 hex characters (5 bytes)");
+    const name = $("#pmEmSaveName").value.trim();
+    try {
+      const res = await api("/api/library", {
+        method:"POST",
+        body: JSON.stringify({
+          uid: id,
+          tag_type: "EM410x",
+          category: "LF",
+          friendly_name: name || undefined,
+        }),
+      });
+      toast(`Saved as ${res.friendly_name}`);
+    } catch (e){ toast(e.message); }
+  };
 }
 
 /* ---- themes ------------------------------------------------------------- */

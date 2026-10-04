@@ -47,6 +47,7 @@ import settings as settings_module  # noqa: E402
 import shell  # noqa: E402
 import sim  # noqa: E402
 import wifiscan  # noqa: E402
+from data_model import CardProfile, TagDump  # noqa: E402
 from health import monitor  # noqa: E402
 from launcher import launcher  # noqa: E402
 from library_store import LibraryStore  # noqa: E402
@@ -217,6 +218,40 @@ async def simulate_tag(request: SimulateRequest):
     return {"ok": True, "recent": hardware.service.recent()}
 
 
+class WriteNdefRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/nfc/write")
+async def write_ndef(request: WriteNdefRequest):
+    ok, detail = await run_in_threadpool(hardware.service.write_ndef_text, request.text)
+    if not ok:
+        return JSONResponse({"ok": False, "message": detail}, status_code=400)
+    return {"ok": True, "message": detail}
+
+
+@app.post("/api/nfc/dump")
+async def dump_mifare_classic():
+    """Untested against real hardware -- see AdafruitPN532Reader.dump_mifare_classic."""
+    ok, message, dump_hex = await run_in_threadpool(hardware.service.dump_mifare_classic)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "dump": dump_hex}, status_code=400)
+    return {"ok": True, "message": message, "dump": dump_hex}
+
+
+class CloneUidRequest(BaseModel):
+    uid: str
+
+
+@app.post("/api/nfc/clone-uid")
+async def clone_uid_to_magic(request: CloneUidRequest):
+    """Untested against real hardware -- see AdafruitPN532Reader.clone_uid_to_magic."""
+    ok, message = await run_in_threadpool(hardware.service.clone_uid_to_magic, request.uid)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
 # ---------------------------------------------------------------------------
 # mmWave radar (LD2450)
 # ---------------------------------------------------------------------------
@@ -278,6 +313,45 @@ async def get_library():
     with _store_lock:
         profiles = store.list_profiles()
     return {"count": len(profiles), "profiles": [p.to_dict() for p in profiles]}
+
+
+class SaveProfileRequest(BaseModel):
+    uid: str
+    tag_type: str
+    technologies: list[str] = []
+    friendly_name: str | None = None
+    category: str | None = None
+    notes: str | None = None
+    dump_hex: str | None = None
+
+
+@app.post("/api/library")
+async def save_profile(request: SaveProfileRequest):
+    """Same upsert-by-UID shape as the Tkinter app's on_tag_detected/
+    save_current_tag (src/ui/app.py:477-506): re-seeing a saved UID updates
+    it in place instead of duplicating it."""
+    with _store_lock:
+        profile = store.get_by_uid(request.uid.upper())
+        if profile is None:
+            profile = CardProfile.new_from_scan(
+                uid=request.uid,
+                tag_type=request.tag_type,
+                tech_details={"technologies": request.technologies},
+            )
+        else:
+            profile.touch_seen()
+            if request.technologies:
+                profile.tech_details["technologies"] = request.technologies
+        if request.friendly_name:
+            profile.friendly_name = request.friendly_name
+        if request.category is not None:
+            profile.category = request.category
+        if request.notes is not None:
+            profile.notes = request.notes
+        if request.dump_hex:
+            profile.dump = TagDump(present=True, complete=True, raw_bytes=request.dump_hex)
+        store.upsert(profile)
+    return profile.to_dict()
 
 
 @app.get("/api/library/{profile_id}")
@@ -444,10 +518,9 @@ async def ir_delete_remote(name: str):
 
 
 # ---------------------------------------------------------------------------
-# Proxmark3: Connect/Device Info and LF/HF search -- the real part of the
-# Tkinter screen's "Connection" and "Read" groups. Clone/Write/Sniff/Script
-# are still just status-label stubs there too, so there is nothing to port
-# for those yet.
+# Proxmark3: Connect/Device Info, LF/HF search, and EM410x read+clone. HF
+# clone, Sniff, and Script are still just status-label stubs in the Tkinter
+# screen too, so there is nothing to port for those yet.
 # ---------------------------------------------------------------------------
 
 @app.get("/api/pm3/status")
@@ -466,6 +539,27 @@ async def pm3_read_lf():
 @app.post("/api/pm3/read/hf")
 async def pm3_read_hf():
     ok, message, raw = await run_in_threadpool(pmweb.read_hf)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw}
+
+
+@app.post("/api/pm3/lf/em410x/read")
+async def pm3_read_em410x():
+    ok, message, raw, tag_id = await run_in_threadpool(pmweb.read_em410x)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw, "id": tag_id}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw, "id": tag_id}
+
+
+class CloneEm410xRequest(BaseModel):
+    id: str
+    target: str = "t55x7"
+
+
+@app.post("/api/pm3/lf/em410x/clone")
+async def pm3_clone_em410x(request: CloneEm410xRequest):
+    ok, message, raw = await run_in_threadpool(pmweb.clone_em410x, request.id, request.target)
     if not ok:
         return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
     return {"ok": True, "message": message, "raw": raw}

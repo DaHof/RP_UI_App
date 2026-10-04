@@ -229,29 +229,30 @@ tools:
     icon: wifi
     category: Wi-Fi
     root: true
-    argv: ["sudo", "wifite"]
+    argv: ["x-terminal-emulator", "-e", "sudo", "wifite"]
     short: Automated Wi-Fi auditing
     desc: >-
       Automates common Wi-Fi auditing attacks (handshake capture, WPS,
       etc.) against networks you're authorized to test.
 
-  # erogluyusuf/WiFi-Sensing-Radar ("Solar Radar") -- RSSI presence sensing with
-  # its own web UI on :8088. It runs on a separate box (a Kali machine, not
-  # this Pi), so it's a link tile, not something this dashboard launches or
-  # can stop. EDIT THE HOST below to match your Kali box's address/hostname.
+  # erogluyusuf/WiFi-Sensing-Radar ("Solar Radar") -- RSSI presence sensing.
+  # Installed locally on this Pi (/home/kali/WiFi-Sensing-Radar) as three
+  # systemd services (sentinel-backend, sentinel-frontend, sentinel-sniffer),
+  # dedicating wlan1 (the AWUS036ACM) to monitor mode against the MoDeans AP.
   - id: wifi-sensing-radar
     name: Solar Radar
     icon: wifi
     category: Wi-Fi
     kind: link
-    note: "WiFi-Sensing-Radar on Kali -- edit host in tools.yaml"
-    url: "http://kali.local:8088"
-    short: WiFi presence sensing (Kali)
+    note: "Sentinel services on this Pi -- edit targets in ~/WiFi-Sensing-Radar/.env"
+    url: "http://127.0.0.1:8088"
+    short: WiFi presence sensing (local)
     desc: >-
-      Opens the web UI of a separate "WiFi-Sensing-Radar" app running on
-      another machine (a Kali box on your LAN) that senses motion/presence
-      through walls using Wi-Fi signal disruption. This tile just links out
-      -- this Pi doesn't run it.
+      Opens the web UI of "WiFi-Sensing-Radar" (Sentinel), running locally
+      on this Pi via systemd. It dedicates wlan1 (the Alfa AWUS036ACM) to
+      monitor mode and streams RSSI jitter from a target BSSID into a
+      real-time radar view. This tile just links out -- manage the services
+      with systemctl (sentinel-backend/-frontend/-sniffer).
 
   # -------------------------------------------------------------------- system
   - id: terminal

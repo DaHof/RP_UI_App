@@ -148,5 +148,14 @@ class ReaderService:
         reader.simulate_tag(uid, tag_type)
         return True
 
+    def write_ndef_text(self, text: str) -> tuple[bool, str]:
+        return self.reader.write_ndef_text(text)
+
+    def dump_mifare_classic(self) -> tuple[bool, str, str | None]:
+        return self.reader.dump_mifare_classic()
+
+    def clone_uid_to_magic(self, uid_hex: str) -> tuple[bool, str]:
+        return self.reader.clone_uid_to_magic(uid_hex)
+
 
 service = ReaderService()
