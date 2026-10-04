@@ -161,7 +161,7 @@ tools:
 
   - id: urh
     name: URH
-    icon: bars
+    icon: refresh
     category: Software Defined Radio
     note: Universal Radio Hacker
     argv: ["urh"]

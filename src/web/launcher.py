@@ -44,9 +44,18 @@ import time
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+import health
 import paths
 import shell
 import sim
+
+# Builtin tiles always navigate (the screen is reachable even if its hardware
+# isn't), so they don't use `available` for this -- but a handful have a real
+# health-monitor channel behind them, and showing nothing on the home grid
+# until you open the screen hides a FAIL a user would want to see up front.
+# Not every builtin has a probe (Bluetooth, Diagnostics, GPIO Pins, Settings
+# don't), so this stays a lookup, not a blanket rule.
+BUILTIN_HEALTH_CHANNEL = {"nfc": "pn532", "proxmark": "proxmark", "mmwave": "mmwave", "ir": "ir"}
 
 # How long a link tile's reachability result is trusted before re-probing, and
 # how long the probe itself is allowed to block -- short, since /api/tools is
@@ -243,6 +252,8 @@ class Launcher:
 
     def as_dicts(self) -> list[dict]:
         self._reap()
+        # One snapshot reused for every builtin tile this call, not one per tile.
+        health_channels = {c["name"]: c["status"] for c in health.monitor.snapshot()["channels"]}
         out = []
         for tool in self._tools:
             if tool.kind == "service":
@@ -271,6 +282,7 @@ class Launcher:
                     "desc": tool.desc,
                     "root": tool.root,
                     "simple": tool.simple,
+                    "hw_status": health_channels.get(BUILTIN_HEALTH_CHANNEL.get(tool.id)),
                     "available": self.available(tool),
                     "running": bool(running),
                     "uptime": uptime,

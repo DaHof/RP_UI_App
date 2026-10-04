@@ -20,14 +20,14 @@
   --face-hi:#242830; --face-lo:#191c22; --recess:#0c0e12;
   --ink:#e8e6e1; --ink-dim:#8a9098; --ink-faint:#8a8f95;
   --accent:#f2b544; --on-accent:#1a1205;
-  --green:#4ab46e; --red:#e2565c; --cyan:#54b9c4;
+  --green:#4ab46e; --red:#e4666c; --cyan:#54b9c4;
   --bg1:#15171b; --bg2:#101216;
   --pin:rgba(255,255,255,.014); --hi:rgba(255,255,255,.04); --hi2:rgba(255,255,255,.05);
 }
 [data-theme="night"]{
   --metal-hi:#3d0f0b; --metal:#2a0a08; --metal-lo:#0a0000;
   --face-hi:#150303; --face-lo:#0d0202; --recess:#080000;
-  --ink:#f5483a; --ink-dim:#a8342b; --ink-faint:#9e6c68;
+  --ink:#f5483a; --ink-dim:#b95c55; --ink-faint:#9e6c68;
   --accent:#f5483a; --on-accent:#180100;
   --green:#f5483a; --red:#f5483a; --cyan:#f5483a;
   --bg1:#0a0000; --bg2:#000000;
@@ -115,19 +115,19 @@ svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;
    3. HEADER
    =========================================================================== */
 header{
-  height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 11px;
+  height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;
   z-index:var(--z-header);border-bottom:1px solid var(--metal-lo);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   box-shadow:inset 0 1px 0 var(--hi2),0 2px 6px rgba(0,0,0,.45);
 }
 .iconbtn{
-  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;
+  width:44px;height:44px;flex:none;display:grid;place-items:center;cursor:pointer;
   color:var(--ink);border-radius:6px;font:inherit;
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   border:1px solid var(--metal);border-top-color:var(--metal-hi);
 }
 .iconbtn:active{transform:translateY(1px);filter:brightness(.92)}
-.iconbtn svg.ic{width:18px;height:18px}
+.iconbtn svg.ic{width:19px;height:19px}
 .iconbtn[hidden]{display:none}
 .plate{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
   letter-spacing:.15em;color:var(--ink);white-space:nowrap;
@@ -141,8 +141,8 @@ header{
   overflow:hidden;background:var(--recess);border:1px solid var(--metal-lo);
   box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
 .spec{position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px;padding:3px 5px}
-.spec i{flex:1;background:var(--accent);opacity:.4;border-radius:1px 1px 0 0;
-  transition:height .16s linear}
+.spec i{flex:1;height:100%;background:var(--accent);opacity:.4;border-radius:1px 1px 0 0;
+  transform-origin:bottom;transition:transform .16s linear}
 .lcd-read{position:absolute;top:4px;left:8px;font-family:var(--font-mono);font-size:10px;
   letter-spacing:.08em;color:var(--accent)}
 
@@ -224,7 +224,7 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
   box-shadow:inset 0 2px 6px rgba(0,0,0,.6);width:100%;aspect-ratio:4/3;display:block}
 .scope .grid-line{fill:none;stroke:var(--metal);stroke-width:1}
 .scope .edge-line{fill:none;stroke:var(--metal);stroke-width:1;stroke-dasharray:3 3}
-.scope .range-lbl{font-family:var(--font-mono);font-size:7.5px;fill:var(--ink-faint)}
+.scope .range-lbl{font-family:var(--font-mono);font-size:12px;fill:var(--ink-dim)}
 .scope .blip{fill:var(--accent);filter:drop-shadow(0 0 4px var(--accent))}
 .scope .blip-ring{fill:none;stroke:var(--accent);stroke-width:1;opacity:.45}
 .scope .blip-lbl{font-family:var(--font-mono);font-size:8.5px;fill:var(--ink)}
@@ -234,12 +234,13 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 
 /* ---- simple home: a handful of plain, oversized tiles instead of the full
    20-tool grid -- see RENDER.home / state.mode. Reuses .mod's structure. ---- */
-.simple-head{display:flex;align-items:baseline;justify-content:space-between;
-  gap:10px;margin:4px 2px 14px}
+.simple-head{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;margin:4px 0 14px}
 .simple-head h2{margin:0;font-size:15px;font-weight:700;letter-spacing:.02em}
-.simple-head .exit{font-size:12px;color:var(--ink-faint);cursor:pointer;
+.simple-head .exit{display:inline-flex;align-items:center;min-height:44px;
+  font-size:12px;color:var(--ink-faint);cursor:pointer;
   text-decoration:underline;text-underline-offset:2px;background:none;border:0;
-  font:inherit;padding:10px 2px;margin:-10px -2px}
+  font:inherit;padding:0 10px;margin:0 -10px}
 .simple-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
 .simple-grid .mod{min-height:132px;align-items:center;text-align:center;
   justify-content:center;gap:9px;padding:18px 14px}
@@ -317,7 +318,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
 
 .progress{height:8px;border-radius:4px;background:var(--recess);overflow:hidden;
   border:1px solid var(--metal-lo);margin:9px 0}
-.progress i{display:block;height:100%;background:var(--accent);transition:width .18s linear}
+.progress i{display:block;height:100%;width:100%;background:var(--accent);
+  transform-origin:left;transition:transform .18s linear}
 
 .list{max-height:228px;overflow-y:auto;margin-top:2px}
 .listitem{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;
@@ -787,7 +789,7 @@ RENDER.home = () => {
     return !gate || features[gate] !== false;
   });
 
-  if (store.get("pipui_mode", "full") === "simple"){
+  if (store.get("pipui_mode", "simple") === "simple"){
     const simple = visible.filter(t => t.simple);
     host.appendChild(el(`<div class="simple-head"><h2>PIP-UI</h2>
       <button class="exit">More tools</button></div>`).firstChild);
@@ -829,7 +831,9 @@ function tile(t){
       <span class="topr">
         ${showTag ? `<span class="tag${tagWarn ? " warn" : ""}">${tagText}</span>` : ""}
         ${t.desc ? `<span class="info" title="What is this?">${ic("info")}</span>` : ""}
-        ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
+        ${t.kind === "builtin"
+          ? (t.hw_status ? `<span class="led" data-s="${esc(t.hw_status)}" title="${esc(t.hw_status)}"></span>` : "")
+            + `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
           : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
           : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
         ${t.kind === "service" && t.running && t.url
@@ -1197,7 +1201,7 @@ async function paintSweep(state){
   const pct = state.total ? Math.round((state.index / state.total) * 100) : 0;
 
   box.innerHTML = state.running
-    ? `<div class="progress"><i style="width:${pct}%"></i></div>
+    ? `<div class="progress"><i style="transform:scaleX(${pct / 100})"></i></div>
        <div class="row"><span class="k">${esc(state.button)} · ${state.index}/${state.total}</span>
          <span class="v">${esc(state.current_model || "")}</span></div>
        <div class="btnrow"><button class="btn danger" id="sweepCancel">${ic("stop")} Stop sweep</button></div>`
@@ -1348,7 +1352,7 @@ function paintLearn(state){
       ${state.running
         ? `<div class="empty" style="padding:18px">Point the remote at the receiver
              and press a button.<br><b>${state.elapsed || 0}s</b> elapsed — gives up at 12s.</div>
-           <div class="progress"><i style="width:${Math.min(100,(state.elapsed/12)*100)}%"></i></div>
+           <div class="progress"><i style="transform:scaleX(${Math.min(100, (state.elapsed / 12) * 100) / 100})"></i></div>
            <div class="btnrow"><button class="btn danger" id="capCancel">${ic("stop")} Cancel</button></div>`
         : r
           ? `<div class="readout">
@@ -1627,13 +1631,14 @@ function paintSettings(data){
     <div class="panel">
       <h3>Simple Home</h3>
       <div class="toggle" role="switch" tabindex="0" id="simpleToggle"
-           aria-pressed="${store.get("pipui_mode", "full") === "simple"}">
+           aria-pressed="${store.get("pipui_mode", "simple") === "simple"}">
         <div><div class="label">Show the simple home screen</div>
-          <div style="font-size:11px;color:var(--ink-dim)">Just NFC / RFID, Infrared, and
-            Bluetooth as big tiles, with a quiet "More tools" link back to everything
-            else. Only on this device/browser. Which tools show up is set by
+          <div style="font-size:11px;color:var(--ink-dim)">On by default for any device
+            that hasn't set this before. Just NFC / RFID, Infrared, and Bluetooth as big
+            tiles, with a quiet "More tools" link back to everything else. Only on this
+            device/browser. Which tools show up is set by
             <span class="mono">simple: true</span> in tools.yaml.</div></div>
-        <span class="swbtn" aria-pressed="${store.get("pipui_mode", "full") === "simple"}"></span>
+        <span class="swbtn" aria-pressed="${store.get("pipui_mode", "simple") === "simple"}"></span>
       </div>
     </div>
     <div class="panel">
@@ -2362,7 +2367,7 @@ function paintSpec(){
   const pad = bars.length - hist.length;
   for (let i = 0; i < bars.length; i++){
     const v = i < pad ? null : hist[i - pad];
-    bars[i].style.height = (v == null ? 2 : Math.max(2, v)) + "%";
+    bars[i].style.transform = `scaleY(${(v == null ? 2 : Math.max(2, v)) / 100})`;
   }
   spec.title = hist.length ? `CPU ${hist[hist.length - 1]}% (last ${hist.length * 5}s)` : "CPU: gathering samples...";
 }
