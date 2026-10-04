@@ -47,6 +47,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: nfc
+    simple: true
     short: Read, save & clone tags
     desc: >-
       Reads 13.56MHz tags with the PN532 reader. Scan a card to see its
@@ -71,6 +72,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: ir
+    simple: true
     short: Capture & replay remotes
     desc: >-
       Captures and replays IR remote signals (TVs, ACs, etc.) over the
@@ -83,6 +85,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: bluetooth
+    simple: true
     short: Scan, pair & connect
     desc: >-
       Scans for nearby Bluetooth devices and lets you pair, trust, and
@@ -147,7 +150,7 @@ tools:
 
   - id: gqrx
     name: GQRX
-    icon: radar
+    icon: signal
     category: Software Defined Radio
     argv: ["gqrx"]
     short: SDR receiver & spectrum view
@@ -180,7 +183,7 @@ tools:
 
   - id: rtl433
     name: rtl_433
-    icon: gauge
+    icon: thermo
     category: Software Defined Radio
     note: decodes 433 MHz sensors
     argv: ["rtl_433"]
@@ -214,7 +217,7 @@ tools:
 
   - id: kismet
     name: Kismet
-    icon: wifi
+    icon: alert
     category: Wi-Fi
     note: "web UI on :2501"
     root: true
@@ -226,7 +229,7 @@ tools:
 
   - id: wifite
     name: Wifite
-    icon: wifi
+    icon: play
     category: Wi-Fi
     root: true
     argv: ["sudo", "wifite"]
@@ -241,7 +244,7 @@ tools:
   # can stop. EDIT THE HOST below to match your Kali box's address/hostname.
   - id: wifi-sensing-radar
     name: Solar Radar
-    icon: wifi
+    icon: external
     category: Wi-Fi
     kind: link
     note: "WiFi-Sensing-Radar on Kali -- edit host in tools.yaml"
@@ -274,7 +277,7 @@ tools:
 
   - id: claude-code
     name: Claude Code
-    icon: terminal
+    icon: power
     category: System
     note: "scripts/install-tools.sh installs this"
     argv: ["x-terminal-emulator", "-e", "claude"]

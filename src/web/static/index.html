@@ -18,7 +18,7 @@
 [data-theme]{
   --metal-hi:#3b414b; --metal:#2b2f37; --metal-lo:#0f1114;
   --face-hi:#242830; --face-lo:#191c22; --recess:#0c0e12;
-  --ink:#e8e6e1; --ink-dim:#8a9098; --ink-faint:#666c74;
+  --ink:#e8e6e1; --ink-dim:#8a9098; --ink-faint:#8a8f95;
   --accent:#f2b544; --on-accent:#1a1205;
   --green:#4ab46e; --red:#e2565c; --cyan:#54b9c4;
   --bg1:#15171b; --bg2:#101216;
@@ -27,7 +27,7 @@
 [data-theme="night"]{
   --metal-hi:#3d0f0b; --metal:#2a0a08; --metal-lo:#0a0000;
   --face-hi:#150303; --face-lo:#0d0202; --recess:#080000;
-  --ink:#f5483a; --ink-dim:#a8342b; --ink-faint:#6d211b;
+  --ink:#f5483a; --ink-dim:#a8342b; --ink-faint:#9e6c68;
   --accent:#f5483a; --on-accent:#180100;
   --green:#f5483a; --red:#f5483a; --cyan:#f5483a;
   --bg1:#0a0000; --bg2:#000000;
@@ -36,7 +36,7 @@
 [data-theme="bench"]{
   --metal-hi:#2c3e4f; --metal:#1e2b38; --metal-lo:#080d12;
   --face-hi:#18222d; --face-lo:#141c26; --recess:#0b1016;
-  --ink:#e6f0f6; --ink-dim:#8aa4b5; --ink-faint:#5a7183;
+  --ink:#e6f0f6; --ink-dim:#8aa4b5; --ink-faint:#778a99;
   --accent:#36d1cc; --on-accent:#04161a;
   --green:#36d1cc; --red:#ff6b6b; --cyan:#36d1cc;
   --bg1:#0a1017; --bg2:#000000;
@@ -52,7 +52,7 @@
 [data-theme="phosphor"]{
   --metal-hi:#1c3a24; --metal:#123018; --metal-lo:#02120a;
   --face-hi:#0a1f10; --face-lo:#06170b; --recess:#020d06;
-  --ink:#7dfca8; --ink-dim:#3f9b62; --ink-faint:#2a6b43;
+  --ink:#7dfca8; --ink-dim:#3f9b62; --ink-faint:#5d8e70;
   --accent:#39ff88; --on-accent:#02170a;
   --green:#39ff88; --red:#ff7b6b; --cyan:#39ff88;
   --bg1:#04140a; --bg2:#010703;
@@ -61,7 +61,7 @@
 [data-theme="amber"]{
   --metal-hi:#3d2e10; --metal:#2b200a; --metal-lo:#120b02;
   --face-hi:#1e1608; --face-lo:#150f05; --recess:#0b0702;
-  --ink:#ffc24d; --ink-dim:#a87c22; --ink-faint:#6f5115;
+  --ink:#ffc24d; --ink-dim:#a87c22; --ink-faint:#947e51;
   --accent:#ffb01f; --on-accent:#1a1002;
   --green:#ffc24d; --red:#ff6b3d; --cyan:#ffc24d;
   --bg1:#120c02; --bg2:#080500;
@@ -70,7 +70,7 @@
 [data-theme="blueprint"]{
   --metal-hi:#1f3d63; --metal:#162c49; --metal-lo:#050d1a;
   --face-hi:#0e2038; --face-lo:#0a182b; --recess:#040c18;
-  --ink:#d6e8ff; --ink-dim:#7f9fc4; --ink-faint:#57779b;
+  --ink:#d6e8ff; --ink-dim:#7f9fc4; --ink-faint:#6e8aa9;
   --accent:#4db8ff; --on-accent:#03121f;
   --green:#3ed6a0; --red:#ff6b8a; --cyan:#4db8ff;
   --bg1:#061223; --bg2:#030a14;
@@ -78,7 +78,7 @@
 [data-theme="daylight"]{
   --metal-hi:#ffffff; --metal:#c3c9d2; --metal-lo:#9aa2ad;
   --face-hi:#ffffff; --face-lo:#eaeef3; --recess:#dfe4ec;
-  --ink:#10151b; --ink-dim:#4a535f; --ink-faint:#697380;
+  --ink:#10151b; --ink-dim:#4a535f; --ink-faint:#5d6671;
   --accent:#0062c4; --on-accent:#ffffff;
   --green:#12813f; --red:#c2231f; --cyan:#0062c4;
   --bg1:#f3f6fa; --bg2:#e4e9f0;
@@ -134,8 +134,8 @@ header{
   overflow:hidden;text-overflow:ellipsis}
 .pwr{width:7px;height:7px;border-radius:50%;flex:none;background:var(--green)}
 .presence{display:flex;gap:10px;margin-left:auto;align-items:center}
-.pchip{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;
-  letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint)}
+.pchip{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint)}
 .pchip[data-on="1"]{color:var(--ink-dim)}
 .lcd{flex:1;max-width:190px;min-width:96px;position:relative;height:34px;border-radius:5px;
   overflow:hidden;background:var(--recess);border:1px solid var(--metal-lo);
@@ -177,7 +177,7 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .sec{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
 .sec:not(:first-child){margin-top:14px}
 .sec svg.ic{width:13px;height:13px;color:var(--ink-faint);stroke-width:1.5}
-.sec .lbl{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim)}
+.sec .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
 .sec .groove{flex:1;height:0;border-top:1px solid var(--metal-lo);box-shadow:0 1px 0 var(--metal)}
 
 .panel{
@@ -185,16 +185,16 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
   border:1px solid var(--metal);border-top-color:var(--metal-hi);
   border-bottom-color:var(--metal-lo);border-radius:8px;padding:12px;
   box-shadow:inset 0 1px 0 var(--hi),0 1px 3px rgba(0,0,0,.4);margin-bottom:10px}
-.panel > h3{margin:0 0 9px;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+.panel > h3{margin:0 0 9px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink-dim);font-weight:600}
 .readout{background:var(--recess);border:1px solid var(--metal-lo);border-radius:6px;
   padding:10px 12px;box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
-.readout .rl{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+.readout .rl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim)}
 .readout .big{font-family:var(--font-mono);font-size:20px;letter-spacing:.09em;
   color:var(--cyan);margin-top:3px;word-break:break-all}
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.chip{font-size:9.5px;color:var(--cyan);border:1px solid var(--metal);
-  background:var(--recess);border-radius:4px;padding:1px 6px}
+.chip{font-size:10.5px;color:var(--cyan);border:1px solid var(--metal);
+  background:var(--recess);border-radius:4px;padding:2px 6px}
 
 .row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12.5px;
   border-bottom:1px solid var(--metal-lo)}
@@ -212,8 +212,8 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .srow:last-child{border-bottom:0}
 .srow .led{margin-top:3px}
 .srow .k{color:var(--ink-dim);white-space:nowrap;flex:none}
-.srow .d{flex:1;min-width:0;text-align:right;font-family:var(--font-mono);font-size:10.5px;
-  color:var(--ink-faint);line-height:1.45;overflow-wrap:anywhere;
+.srow .d{flex:1;min-width:0;text-align:right;font-family:var(--font-mono);font-size:11.5px;
+  color:var(--ink-dim);line-height:1.45;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
@@ -231,6 +231,23 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 
 /* ---- tiles ---- */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
+
+/* ---- simple home: a handful of plain, oversized tiles instead of the full
+   20-tool grid -- see RENDER.home / state.mode. Reuses .mod's structure. ---- */
+.simple-head{display:flex;align-items:baseline;justify-content:space-between;
+  gap:10px;margin:4px 2px 14px}
+.simple-head h2{margin:0;font-size:15px;font-weight:700;letter-spacing:.02em}
+.simple-head .exit{font-size:12px;color:var(--ink-faint);cursor:pointer;
+  text-decoration:underline;text-underline-offset:2px;background:none;border:0;
+  font:inherit;padding:10px 2px;margin:-10px -2px}
+.simple-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.simple-grid .mod{min-height:132px;align-items:center;text-align:center;
+  justify-content:center;gap:9px;padding:18px 14px}
+.simple-grid .mod .top{justify-content:center}
+.simple-grid .mod svg.ic{width:34px;height:34px}
+.simple-grid .mod .nm{font-size:15px}
+.simple-grid .mod .cmd{font-family:var(--font-ui);font-size:12px;white-space:normal;
+  text-overflow:clip;overflow:visible}
 .mod{position:relative;display:flex;flex-direction:column;gap:4px;padding:9px 10px;
   min-height:70px;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
@@ -241,20 +258,20 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .mod:active{transform:translateY(1px);filter:brightness(.93)}
 .mod .top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
 .mod svg.ic{width:20px;height:20px;color:var(--ink-dim)}
-.mod .nm{font-size:12px;font-weight:600}
-.mod .cmd{margin-top:auto;font-family:var(--font-mono);font-size:9px;color:var(--ink-faint);
+.mod .nm{font-size:13px;font-weight:600}
+.mod .cmd{margin-top:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mod .up{margin-top:auto;font-family:var(--font-mono);font-size:9.5px;color:var(--accent)}
+.mod .up{margin-top:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--accent)}
 .mod.on{border-color:var(--accent);box-shadow:inset 0 1px 0 var(--hi),0 0 0 1px var(--accent)}
 .mod.on svg.ic{color:var(--accent)}
 .mod.off{opacity:.45;cursor:not-allowed}
 .mod .topr{display:flex;align-items:center;gap:4px}
-.mod .info,.mod .openlink{display:flex;align-items:center;justify-content:center;color:var(--ink-faint);
-  padding:5px;margin:-5px;border-radius:50%}
-.mod .info svg.ic,.mod .openlink svg.ic{width:14px;height:14px}
+.mod .info,.mod .openlink{display:flex;align-items:center;justify-content:center;color:var(--ink-dim);
+  padding:9px;margin:-9px;border-radius:50%}
+.mod .info svg.ic,.mod .openlink svg.ic{width:15px;height:15px}
 .mod .info:hover,.mod .info:active,.mod .openlink:hover,.mod .openlink:active{color:var(--ink);background:rgba(127,127,127,.15)}
-.tag{font-size:7.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-dim);
-  border:1px solid var(--metal);border-radius:3px;padding:0 3px;white-space:nowrap}
+.tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);
+  border:1px solid var(--metal);border-radius:3px;padding:1px 4px;white-space:nowrap}
 .tag.warn{color:var(--red);border-color:var(--red)}
 
 /* ---- scanner: inline signal-history bars, same technique as the header's
@@ -266,7 +283,7 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 /* ---- buttons ---- */
 .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  min-height:38px;padding:0 14px;border-radius:6px;cursor:pointer;
+  min-height:44px;padding:0 14px;border-radius:6px;cursor:pointer;
   font:inherit;font-size:12px;font-weight:600;color:var(--ink);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   border:1px solid var(--metal);border-top-color:var(--metal-hi)}
@@ -286,17 +303,17 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 /* ---- sub-nav inside a view (mirrors the Tkinter IR tabs) ---- */
 .tabs{display:flex;gap:4px;margin-bottom:10px;padding:3px;border-radius:7px;
   background:var(--recess);border:1px solid var(--metal-lo)}
-.tabs button{flex:1;min-height:32px;border:0;border-radius:5px;cursor:pointer;font:inherit;
-  font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--ink-dim);background:transparent}
+.tabs button{flex:1;min-height:44px;border:0;border-radius:5px;cursor:pointer;font:inherit;
+  font-size:12px;font-weight:600;letter-spacing:.05em;color:var(--ink-dim);background:transparent}
 .tabs button[aria-selected="true"]{color:var(--on-accent);background:var(--accent)}
 [data-theme="night"] .tabs button[aria-selected="true"]{color:var(--accent);
   background:transparent;box-shadow:inset 0 0 0 1px var(--accent)}
 
 input[type="text"],input[type="search"],select{font:inherit;font-size:12px;color:var(--ink);
   background:var(--recess);border:1px solid var(--metal);border-radius:6px;
-  padding:8px 10px;min-height:36px;width:100%}
+  padding:8px 10px;min-height:44px;width:100%}
 input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-2px}
-input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
+input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
 
 .progress{height:8px;border-radius:4px;background:var(--recess);overflow:hidden;
   border:1px solid var(--metal-lo);margin:9px 0}
@@ -306,25 +323,28 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
 .listitem{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;
   font-size:12px;color:var(--ink);cursor:pointer;padding:7px 8px;border:0;
   border-bottom:1px solid var(--metal-lo);background:transparent}
-.listitem .sub2{margin-left:auto;font-size:10px;color:var(--ink-faint);
+.listitem .sub2{margin-left:auto;font-size:11px;color:var(--ink-dim);
   font-family:var(--font-mono);white-space:nowrap}
 .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px}
-.pill{min-height:34px;padding:0 10px;border-radius:6px;cursor:pointer;font:inherit;
-  font-size:11.5px;font-weight:600;color:var(--ink);
+.pill{min-height:44px;padding:0 10px;border-radius:6px;cursor:pointer;font:inherit;
+  font-size:12px;font-weight:600;color:var(--ink);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   border:1px solid var(--metal);border-top-color:var(--metal-hi)}
 .pill[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
 .pill[disabled]{opacity:.4;cursor:not-allowed}
 
-/* ---- toggle switch (feature flags) ---- */
+/* ---- toggle switch (feature flags) ----
+   The whole row is the hit target (min-height:44px, cursor:pointer), not just
+   the visual switch -- a 26px-tall switch was the only tappable thing in a
+   screen made entirely of toggles. */
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:10px 2px;border-bottom:1px solid var(--metal-lo)}
+  padding:10px 2px;min-height:44px;border-bottom:1px solid var(--metal-lo);cursor:pointer}
 .toggle:last-child{border-bottom:0}
 .toggle .label{font-size:13px;color:var(--ink)}
 .swbtn{width:46px;height:26px;flex:none;border-radius:13px;cursor:pointer;position:relative;
-  background:var(--recess);border:1px solid var(--metal);padding:0}
+  background:var(--recess);border:1px solid var(--metal);padding:0;pointer-events:none}
 .swbtn::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;
-  border-radius:50%;background:var(--ink-faint);transition:transform .14s ease,background .14s ease}
+  border-radius:50%;background:var(--ink-dim);transition:transform .14s ease,background .14s ease}
 .swbtn[aria-pressed="true"]{border-color:var(--accent)}
 .swbtn[aria-pressed="true"]::after{transform:translateX(20px);background:var(--accent)}
 
@@ -364,7 +384,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
 .swatch .dots{display:flex;gap:4px}
 .swatch .dots i{width:11px;height:11px;border-radius:50%;display:block}
 .swatch .tn{font-size:11px;font-weight:600}
-.swatch .td{font-size:9px;color:var(--ink-faint)}
+.swatch .td{font-size:10.5px;color:var(--ink-dim)}
 
 /* ===========================================================================
    5. OVERLAYS -- splash, modal, toast
@@ -375,10 +395,10 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
 #splash.gone{opacity:0;pointer-events:none;transition:opacity .32s ease}
 @media (prefers-reduced-motion:reduce){#splash.gone{transition:none}}
 #splash .mark{font-size:15px;font-weight:700;letter-spacing:.3em;color:var(--accent)}
-#splash .sub{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
+#splash .sub{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
 #bootlist{width:100%;max-width:340px;margin-top:4px}
-#bootlist .row{padding:5px 0;font-size:12px}
-#bootlist .row .v{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+#bootlist .row{padding:5px 0;font-size:12.5px}
+#bootlist .row .v{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   font-family:var(--font-ui);font-weight:700;color:var(--ink-dim)}
 
 #modal{position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;
@@ -456,6 +476,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:34px}
     <div class="presence" id="presence"></div>
     <div class="lcd"><div class="spec" id="spec"></div>
       <div class="lcd-read mono"><span id="lcdCount">0</span> ACTIVE · <span id="lcdClock">--:--</span></div></div>
+    <button class="iconbtn" id="helpBtn" aria-label="What do the lights mean?"><svg class="ic"><use href="#i-info"/></svg></button>
     <button class="iconbtn" id="fsBtn" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
   </header>
@@ -579,6 +600,39 @@ function showInfo(title, body){
   $("#mYes").onclick = close;
 }
 
+/* Plain-language legend for the LED states and tile badges -- there was
+   previously no explanation anywhere in the UI for what a dot's color/shape
+   or a tag's text meant. Built from spans + <br>, not <div>s, since #mBody
+   is a <p> and must stay phrasing content. */
+function showLegend(){
+  $("#mTitle").textContent = "What the lights and tags mean";
+  $("#mBody").innerHTML = [
+    ["PASS", "Ready to use"],
+    ["WARN", "Running right now"],
+    ["FAIL", "Not working"],
+    ["idle", "Installed, not running"],
+  ].map(([s, label]) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:3px 0">
+    <span class="led" data-s="${s}"></span>${esc(label)}</span>`).join("<br>")
+    + "<br><br>" + [
+    ["tag warn", "absent", "Not installed on this device"],
+    ["tag warn", "unreachable", "Lives on another device that's offline"],
+    ["tag", "root", "Works, but needs your approval to start"],
+  ].map(([cls, text, label]) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:3px 0">
+    <span class="${cls}">${text}</span>${esc(label)}</span>`).join("<br>");
+  $("#mWarn").hidden = true;
+  $("#mNo").hidden = true;
+  $("#mYes").textContent = "Close";
+  $("#mYes").classList.remove("danger");
+  $("#modal").classList.add("on");
+  const close = () => {
+    $("#modal").classList.remove("on");
+    $("#mYes").onclick = null;
+    $("#mNo").hidden = false;
+    $("#mYes").classList.add("danger");
+  };
+  $("#mYes").onclick = close;
+}
+
 /* ===========================================================================
    8. API
    =========================================================================== */
@@ -662,6 +716,7 @@ function routeFromHash(){
 addEventListener("hashchange", () => go(routeFromHash(), false));
 $("#back").onclick = () => go("home");
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
+$("#helpBtn").onclick = showLegend;
 
 /* ---- fullscreen / kiosk -------------------------------------------------
    Chromium --kiosk is the real answer on the Pi (see scripts/kiosk.sh); this
@@ -724,6 +779,22 @@ RENDER.home = () => {
     return !gate || features[gate] !== false;
   });
 
+  if (store.get("pipui_mode", "full") === "simple"){
+    const simple = visible.filter(t => t.simple);
+    host.appendChild(el(`<div class="simple-head"><h2>PIP-UI</h2>
+      <button class="exit">More tools</button></div>`).firstChild);
+    if (!simple.length){
+      host.appendChild(el(`<div class="empty">No tools are marked for Simple Home yet.<br>
+        Turn on a tool under Settings → Simple Home.</div>`).firstChild);
+    } else {
+      const grid = el(`<div class="simple-grid"></div>`).firstChild;
+      for (const t of simple) grid.appendChild(tile(t));
+      host.appendChild(grid);
+    }
+    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); };
+    return;
+  }
+
   const cats = [];
   const byCat = {};
   for (const t of visible){
@@ -742,9 +813,13 @@ RENDER.home = () => {
 function tile(t){
   const passive = t.kind === "builtin";
   const cls = passive ? "" : !t.available ? "off" : t.running ? "on" : "";
+  const showTag = (!t.available && !passive) || t.root;
+  const tagWarn = !t.available;
+  const tagText = !t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root";
   const node = el(`<button class="mod ${cls}">
     <div class="top">${ic(t.icon)}
       <span class="topr">
+        ${showTag ? `<span class="tag${tagWarn ? " warn" : ""}">${tagText}</span>` : ""}
         ${t.desc ? `<span class="info" title="What is this?">${ic("info")}</span>` : ""}
         ${t.kind === "builtin" ? `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
           : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
@@ -756,10 +831,6 @@ function tile(t){
     <div class="nm">${esc(t.name)}</div>
     ${t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
       : `<div class="cmd" title="${esc(t.desc || "")}">${esc(glanceText(t))}</div>`}
-    ${(!t.available && !passive) || t.root
-      ? `<div style="position:absolute;top:9px;right:${t.desc ? 46 : 26}px">
-           <span class="tag">${!t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root"}</span></div>`
-      : ""}
   </button>`).firstChild;
 
   const info = node.querySelector(".info");
@@ -1437,38 +1508,71 @@ function paintSettings(data){
       <span class="mono">data/system_settings.json</span>. A change here shows up
       there (and vice versa) within a few seconds.</div></div>
     <div class="panel">
+      <h3>Simple Home</h3>
+      <div class="toggle" role="switch" tabindex="0" id="simpleToggle"
+           aria-pressed="${store.get("pipui_mode", "full") === "simple"}">
+        <div><div class="label">Show the simple home screen</div>
+          <div style="font-size:11px;color:var(--ink-dim)">Just NFC / RFID, Infrared, and
+            Bluetooth as big tiles, with a quiet "More tools" link back to everything
+            else. Only on this device/browser. Which tools show up is set by
+            <span class="mono">simple: true</span> in tools.yaml.</div></div>
+        <span class="swbtn" aria-pressed="${store.get("pipui_mode", "full") === "simple"}"></span>
+      </div>
+    </div>
+    <div class="panel">
       <h3>Modules</h3>
       ${FEATURE_LABELS.map(([key, label, hint]) => `
-        <div class="toggle">
+        <div class="toggle" role="switch" tabindex="0" data-feature="${key}"
+             aria-pressed="${f[key] !== false}">
           <div><div class="label">${esc(label)}</div>
-            <div style="font-size:10.5px;color:var(--ink-faint)">${esc(hint)}</div></div>
-          <button class="swbtn" data-feature="${key}" aria-pressed="${f[key] !== false}"></button>
+            <div style="font-size:11px;color:var(--ink-dim)">${esc(hint)}</div></div>
+          <span class="swbtn" aria-pressed="${f[key] !== false}"></span>
         </div>`).join("")}
     </div>
     <div class="panel">
-      <div class="toggle" style="border-bottom:0">
+      <div class="toggle" role="switch" tabindex="0" id="logToggle" style="border-bottom:0"
+           aria-pressed="${!!data.log_enabled}">
         <div><div class="label">Log to files</div>
-          <div style="font-size:10.5px;color:var(--ink-faint)">data/logs/*.log, 1 MiB rotation</div></div>
-        <button class="swbtn" id="logToggle" aria-pressed="${!!data.log_enabled}"></button>
+          <div style="font-size:11px;color:var(--ink-dim)">data/logs/*.log, 1 MiB rotation</div></div>
+        <span class="swbtn" aria-pressed="${!!data.log_enabled}"></span>
       </div>
     </div>`;
 
+  // The whole row is the hit target; the swbtn inside is purely visual
+  // (pointer-events:none in CSS) and just mirrors the row's aria-pressed.
   const pending = { features: { ...f }, log_enabled: !!data.log_enabled };
-  host.querySelectorAll("[data-feature]").forEach(btn => {
-    btn.onclick = async () => {
-      const key = btn.dataset.feature;
-      const next = btn.getAttribute("aria-pressed") !== "true";
-      btn.setAttribute("aria-pressed", String(next));
-      pending.features[key] = next;
+  const flipRow = (row) => {
+    const next = row.getAttribute("aria-pressed") !== "true";
+    row.setAttribute("aria-pressed", String(next));
+    row.querySelector(".swbtn").setAttribute("aria-pressed", String(next));
+    return next;
+  };
+  host.querySelectorAll(".toggle[data-feature]").forEach(row => {
+    const activate = async () => {
+      pending.features[row.dataset.feature] = flipRow(row);
       await saveSettings(pending);
     };
+    row.onclick = activate;
+    row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(); } };
   });
-  $("#logToggle").onclick = async (e) => {
-    const next = e.currentTarget.getAttribute("aria-pressed") !== "true";
-    e.currentTarget.setAttribute("aria-pressed", String(next));
-    pending.log_enabled = next;
+  const logRow = $("#logToggle");
+  const activateLog = async () => {
+    pending.log_enabled = flipRow(logRow);
     await saveSettings(pending);
   };
+  logRow.onclick = activateLog;
+  logRow.onkeydown = (e) => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activateLog(); } };
+
+  // Simple Home is a per-device preference (localStorage), not part of the
+  // shared system_settings.json -- your device and hers can differ.
+  const simpleRow = $("#simpleToggle");
+  const activateSimple = () => {
+    const on = flipRow(simpleRow);
+    store.set("pipui_mode", on ? "simple" : "full");
+    toast(on ? "Simple Home on" : "Simple Home off");
+  };
+  simpleRow.onclick = activateSimple;
+  simpleRow.onkeydown = (e) => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activateSimple(); } };
 }
 
 async function saveSettings(pending){

@@ -96,6 +96,7 @@ class Tool:
     short: str = ""                  # always-visible one-liner on the tile itself
     desc: str = ""                   # longer explanation, shown in the UI's info popover
     root: bool = False
+    simple: bool = False             # shown on the simplified home screen (see Settings)
 
     @property
     def binary(self) -> str:
@@ -168,6 +169,7 @@ def load_tools() -> tuple[list[Tool], str]:
                 short=str(entry.get("short", "")),
                 desc=str(entry.get("desc", "")),
                 root=bool(entry.get("root", False)),
+                simple=bool(entry.get("simple", False)),
             )
         )
     return tools, ""
@@ -268,6 +270,7 @@ class Launcher:
                     "short": tool.short,
                     "desc": tool.desc,
                     "root": tool.root,
+                    "simple": tool.simple,
                     "available": self.available(tool),
                     "running": bool(running),
                     "uptime": uptime,
