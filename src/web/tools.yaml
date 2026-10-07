@@ -59,6 +59,7 @@ tools:
     category: Hardware Tools
     kind: builtin
     view: proxmark
+    simple: true
     short: RFID/NFC research tool
     desc: >-
       RFID tool covering both low-frequency (125kHz, e.g. key fobs) and

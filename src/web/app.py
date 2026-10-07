@@ -528,6 +528,11 @@ async def pm3_status():
     return await run_in_threadpool(pmweb.device_info)
 
 
+@app.post("/api/pm3/scan")
+async def pm3_scan():
+    return await run_in_threadpool(pmweb.scan)
+
+
 @app.post("/api/pm3/read/lf")
 async def pm3_read_lf():
     ok, message, raw = await run_in_threadpool(pmweb.read_lf)
@@ -538,10 +543,10 @@ async def pm3_read_lf():
 
 @app.post("/api/pm3/read/hf")
 async def pm3_read_hf():
-    ok, message, raw = await run_in_threadpool(pmweb.read_hf)
+    ok, message, raw, uid, tag_type = await run_in_threadpool(pmweb.read_hf)
     if not ok:
         return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
-    return {"ok": True, "message": message, "raw": raw}
+    return {"ok": True, "message": message, "raw": raw, "uid": uid, "tag_type": tag_type}
 
 
 @app.post("/api/pm3/lf/em410x/read")
