@@ -2192,7 +2192,7 @@ async function btPower(on){
    HF clone, Sniff, and Script are still stubs in the Tkinter screen too (see
    src/ui/app.py's ProxmarkScreen) -- this wires up Connection, Read, and the
    one LF clone path the pm3 client actually supports as a single command. */
-const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", hfCloneUid: "", scanFound: null };
+const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", hfCloneUid: "", scanFound: null, hfVerify: null, lfVerify: null };
 
 // `hf search`/`lf search` output is mostly spinner-frame noise -- strip the
 // bare "[\]"/"[|]"/"[/]"/"[-]" progress lines and blank lines so the
@@ -2309,6 +2309,12 @@ function paintProxmark(message){
         </select>
         <button class="btn pri" id="pmEmClone">${ic("save")} Clone to tag</button>
       </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="pmEmVerify">${ic("antenna")} Verify (re-read the fob now on the antenna)</button>
+      </div>
+      ${pmState.lfVerify ? `<div class="row" style="margin-top:6px">
+        <span class="k">Result</span><span class="v" style="color:var(${pmState.lfVerify.ok ? "--green" : "--red"})">${esc(pmState.lfVerify.text)}</span>
+      </div>` : ""}
     </details>
     <details class="panel" ${pmState.scanFound === "hf" ? "open" : ""}>
       <summary style="cursor:pointer"><h3 style="display:inline">Clone to a magic card (advanced)</h3></summary>
@@ -2320,6 +2326,12 @@ function paintProxmark(message){
                value="${esc(pmState.hfCloneUid)}" style="flex:1;min-width:150px" maxlength="14">
         <button class="btn pri" id="pmHfClone">${ic("save")} Clone to tag</button>
       </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="pmHfVerify">${ic("antenna")} Verify (re-scan the card now on the antenna)</button>
+      </div>
+      ${pmState.hfVerify ? `<div class="row" style="margin-top:6px">
+        <span class="k">Result</span><span class="v" style="color:var(${pmState.hfVerify.ok ? "--green" : "--red"})">${esc(pmState.hfVerify.text)}</span>
+      </div>` : ""}
     </details>
     <details class="panel">
       <summary style="cursor:pointer"><h3 style="display:inline">Raw output (advanced)</h3></summary>
@@ -2400,6 +2412,25 @@ function paintProxmark(message){
       paintProxmark(e.message);
     }
   };
+  $("#pmEmVerify").onclick = async () => {
+    const expected = $("#pmEmId").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{10}$/.test(expected)) return toast("Fill in the ID you cloned first");
+    paintProxmark("Reading the fob on the antenna…");
+    try {
+      const res = await api("/api/pm3/lf/em410x/read", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      const got = (res.id || "").toUpperCase();
+      pmState.lfVerify = got === expected
+        ? { ok: true, text: `Matches — reads back as ${got}` }
+        : { ok: false, text: got ? `Does not match — card reads as ${got}, expected ${expected}` : "No EM410x tag read back" };
+      paintProxmark();
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      const got = (e.body?.id || "").toUpperCase();
+      pmState.lfVerify = { ok: false, text: got ? `Does not match — card reads as ${got}` : "No EM410x tag read back" };
+      paintProxmark();
+    }
+  };
   $("#pmHfCloneUid").oninput = (e) => { pmState.hfCloneUid = e.target.value.trim().toUpperCase(); };
   $("#pmHfClone").onclick = async () => {
     const uid = $("#pmHfCloneUid").value.trim().toUpperCase();
@@ -2414,6 +2445,24 @@ function paintProxmark(message){
     } catch (e){
       pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
       paintProxmark(e.message);
+    }
+  };
+  $("#pmHfVerify").onclick = async () => {
+    const expected = $("#pmHfCloneUid").value.trim().toUpperCase();
+    if (!expected) return toast("Fill in the UID you cloned first");
+    paintProxmark("Reading the card on the antenna…");
+    try {
+      const res = await api("/api/pm3/read/hf", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      const got = (res.uid || "").toUpperCase();
+      pmState.hfVerify = got === expected
+        ? { ok: true, text: `Matches — reads back as ${got} (${res.tag_type || "?"})` }
+        : { ok: false, text: got ? `Does not match — card reads as ${got}, expected ${expected}` : "No HF tag read back" };
+      paintProxmark();
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmState.hfVerify = { ok: false, text: "No HF tag read back" };
+      paintProxmark();
     }
   };
 
