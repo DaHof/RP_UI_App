@@ -2249,19 +2249,38 @@ RENDER.proxmark = async () => {
   paintProxmark();
 };
 
+// What to actually buy/use, by the HF tag type the wizard just read -- not
+// every HF family uses the same magic blank, and DESFire can't be cloned
+// onto any blank at all (per-card crypto keys, not just a UID check).
+function pmBlankNeededHf(tagType){
+  const t = (tagType || "").toLowerCase();
+  if (t.includes("mifare classic"))
+    return { buy: "A Gen1a \"magic\" MIFARE Classic card — often sold as a \"UID card\" or \"UID changeable card.\"", clonable: true };
+  if (t.includes("ultralight") || t.includes("ntag"))
+    return { buy: "A magic/UID-changeable NTAG213/215/216 tag — a different blank than MIFARE, so check the listing before buying.", clonable: true };
+  if (t.includes("desfire"))
+    return { buy: "This card can't be cloned this way — DESFire uses per-card security keys, not just a UID check.", clonable: false };
+  if (t.includes("iclass") || t.includes("picopass"))
+    return { buy: "An iCLASS-compatible magic/CSN-changeable card — a standard iCLASS card can't be rewritten.", clonable: true };
+  return { buy: "Not sure what blank this needs — the exact card type above isn't one this app recognizes for cloning.", clonable: false };
+}
+
 function renderWizard(){
   const w = pmWizard;
   const bigBtn = "min-height:52px;font-size:16px;width:100%";
   if (w.step === "swap" && w.found){
+    const hfBlank = w.found.kind === "hf" ? pmBlankNeededHf(w.found.tagType) : null;
     const needs = w.found.kind === "hf"
-      ? "You need a Gen1a \"magic\" / \"UID\" blank card — an ordinary card can't be rewritten."
+      ? hfBlank.buy
       : "You need a blank T5577, Q5/T5555, or EM4305/4469 fob.";
+    const canWrite = w.found.kind !== "hf" || hfBlank.clonable;
     return `<div class="panel">
       <h3>Clone a card — step 2 of 3</h3>
       <div class="row"><span class="k">Found</span>
         <span class="v">${esc(w.found.tagType)} (${esc(w.found.uid)})</span></div>
-      <div class="d" style="margin:10px 0">Remove that card, and put your <b>blank</b> card on the
-        reader instead. ${esc(needs)}</div>
+      <div class="d" style="margin:10px 0"><b>What you need:</b> ${esc(needs)}</div>
+      ${canWrite ? `<div class="d" style="margin-bottom:10px">Remove the original, and put that blank
+        on the reader instead.</div>` : ""}
       ${w.found.kind === "lf" ? `<div class="btnrow" style="margin-bottom:10px">
         <select id="wizTarget" style="flex:1;min-height:44px">
           <option value="t55x7" ${w.target === "t55x7" ? "selected" : ""}>Blank is a T5577</option>
@@ -2269,9 +2288,9 @@ function renderWizard(){
           <option value="em4305" ${w.target === "em4305" ? "selected" : ""}>Blank is an EM4305/4469</option>
         </select>
       </div>` : ""}
-      <div class="btnrow">
+      ${canWrite ? `<div class="btnrow">
         <button class="btn pri" id="wizWrite" style="${bigBtn}">${ic("save")} Write to blank card</button>
-      </div>
+      </div>` : ""}
       <div class="btnrow" style="margin-top:8px">
         <button class="btn" id="wizCancel">Start over</button>
       </div>
