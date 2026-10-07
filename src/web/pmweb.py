@@ -155,6 +155,24 @@ def read_em410x() -> tuple[bool, str, str, str | None]:
     return False, "No EM410x tag found", result.stdout, None
 
 
+def clone_mifare_uid(uid_hex: str) -> tuple[bool, str, str]:
+    """Writes a new UID onto a Gen1a magic MIFARE Classic card via the
+    client's own `hf mf csetuid` -- a documented backdoor command, unlike the
+    hand-rolled unlock-byte sequence the PN532 path uses, so this one is a
+    real client feature rather than a best-effort guess."""
+    port = find_port()
+    if not port:
+        return False, "No Proxmark3 detected", ""
+    clean = uid_hex.replace(":", "").replace(" ", "")
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}|[0-9A-Fa-f]{14}", clean):
+        return False, "UID must be 4 or 7 hex bytes (8 or 14 hex characters)", ""
+
+    result = shell.run(["proxmark3", "-p", port, "-c", f"hf mf csetuid -u {clean}"], timeout=CLONE_TIMEOUT)
+    if not result.ok:
+        return False, result.detail, result.stdout
+    return True, f"Wrote UID {clean.upper()} to magic card", result.stdout
+
+
 def clone_em410x(tag_id: str, target: str = "t55x7") -> tuple[bool, str, str]:
     """Writes an EM410x ID onto a blank T55x7/Q5/EM4305 tag held to the
     antenna. `target` picks the blank chip type; unknown values fall back to

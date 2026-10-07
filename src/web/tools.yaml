@@ -63,9 +63,23 @@ tools:
     short: RFID/NFC research tool
     desc: >-
       RFID tool covering both low-frequency (125kHz, e.g. key fobs) and
-      high-frequency (13.56MHz) cards via a Proxmark3 device over USB.
-      Device info and LF/HF search are wired up to the real `proxmark3`
-      client; clone, write, and sniff are not implemented yet.
+      high-frequency (13.56MHz) cards via a Proxmark3 device over USB. Scan,
+      save, and clone (EM410x to a blank fob, or MIFARE UID to a Gen1a magic
+      card) are wired up to the real `proxmark3` client; dump and sniff are
+      not implemented yet.
+
+  - id: library
+    name: Card Library
+    icon: card
+    category: Hardware Tools
+    kind: builtin
+    view: library
+    simple: true
+    short: Saved cards & fobs
+    desc: >-
+      Browse everything saved from the NFC or Proxmark3 tools, rename or
+      delete entries, or press Clone to jump back to the right tool with
+      that card's ID already filled in.
 
   - id: ir
     name: Infrared

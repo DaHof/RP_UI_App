@@ -1091,20 +1091,25 @@ RENDER.library = async () => {
     };
   });
 
-  // LF (Proxmark3/EM410x) entries clone via the Proxmark3 tile's own clone
-  // command; everything else is treated as an HF/PN532 tag and clones via
-  // UID-to-magic-card on the NFC tile. There's no "replay a saved dump"
-  // write path yet -- this only ever pushes the UID.
+  // LF and HF entries saved from the Proxmark3 tile (category "LF"/"HF")
+  // clone via that same tile's own commands; everything else was saved from
+  // the PN532/NFC tile and clones via UID-to-magic-card there instead.
+  // There's no "replay a saved dump" write path yet -- this only ever
+  // pushes the UID.
   host.querySelectorAll("[data-clone]").forEach(btn => {
     btn.onclick = () => {
       const id = btn.getAttribute("data-clone");
       const profile = data.profiles.find(p => p.id === id);
       if (!profile) return;
+      const uid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
       if (profile.category === "LF") {
-        pmState.emId = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        pmState.emId = uid;
+        go("proxmark");
+      } else if (profile.category === "HF") {
+        pmState.hfCloneUid = uid;
         go("proxmark");
       } else {
-        nfcState.cloneUid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        nfcState.cloneUid = uid;
         go("nfc");
       }
     };
@@ -2187,7 +2192,7 @@ async function btPower(on){
    HF clone, Sniff, and Script are still stubs in the Tkinter screen too (see
    src/ui/app.py's ProxmarkScreen) -- this wires up Connection, Read, and the
    one LF clone path the pm3 client actually supports as a single command. */
-const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", scanFound: null };
+const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", hfCloneUid: "", scanFound: null };
 
 // `hf search`/`lf search` output is mostly spinner-frame noise -- strip the
 // bare "[\]"/"[|]"/"[/]"/"[-]" progress lines and blank lines so the
@@ -2224,7 +2229,9 @@ function pmCloneHint(tagType){
 // non-technical person should have to parse before they can save a card.
 function pmCloneHintSimple(tagType){
   const t = (tagType || "").toLowerCase();
-  if (t.includes("mifare classic") || t.includes("ultralight") || t.includes("ntag") || t.includes("iclass") || t.includes("picopass"))
+  if (t.includes("mifare classic"))
+    return "This can be cloned onto a magic card — see \"Clone to a magic card\" below.";
+  if (t.includes("ultralight") || t.includes("ntag") || t.includes("iclass") || t.includes("picopass"))
     return "This can be cloned, but only onto a special \"magic\" blank card.";
   if (t.includes("desfire"))
     return "This card can't be cloned -- it uses extra security beyond just an ID.";
@@ -2249,6 +2256,7 @@ function paintProxmark(message){
       <div class="btnrow" style="margin-top:8px">
         <button class="btn pri" id="pmScan">${ic("antenna")} Scan card</button>
         <button class="btn" id="pmRefresh">${ic("refresh")} Device info</button>
+        <button class="btn" id="pmLibBtn">${ic("card")} Library</button>
       </div>
     </div>
     <div class="panel" id="pmResultPanel">
@@ -2284,9 +2292,10 @@ function paintProxmark(message){
     </div>
     <details class="panel" ${pmState.scanFound === "lf" ? "open" : ""}>
       <summary style="cursor:pointer"><h3 style="display:inline">Clone to a blank fob (advanced)</h3></summary>
-      <div class="d" style="margin:8px 0">Needs a blank T5577, Q5/T5555, or EM4305/4469 tag/fob — check
-        what you bought if you're not sure which. Scan (or read) a source EM410x fob to get its ID
-        first. Other LF tag types (HID, Hitag, ...) aren't wired up here.</div>
+      <div class="d" style="margin:8px 0"><b>1.</b> Scan the source fob above to fill in its ID.
+        <b>2.</b> Lift it off the antenna and put a <b>blank</b> T5577, Q5/T5555, or EM4305/4469
+        fob there instead — check what you bought if you're not sure which. <b>3.</b> Press Clone
+        to tag. Other LF tag types (HID, Hitag, ...) aren't wired up here.</div>
       <div class="btnrow">
         <button class="btn" id="pmEmRead">${ic("refresh")} Read EM410x ID</button>
       </div>
@@ -2301,6 +2310,17 @@ function paintProxmark(message){
         <button class="btn pri" id="pmEmClone">${ic("save")} Clone to tag</button>
       </div>
     </details>
+    <details class="panel" ${pmState.scanFound === "hf" ? "open" : ""}>
+      <summary style="cursor:pointer"><h3 style="display:inline">Clone to a magic card (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0"><b>1.</b> Scan the source card above to fill in its UID.
+        <b>2.</b> Lift it off the antenna and put a <b>Gen1a "magic"</b> MIFARE Classic card there
+        instead — an ordinary card's UID can't be rewritten. <b>3.</b> Press Clone to tag.</div>
+      <div class="btnrow">
+        <input type="text" id="pmHfCloneUid" placeholder="4 or 7-byte hex UID, e.g. 04A1B2C3"
+               value="${esc(pmState.hfCloneUid)}" style="flex:1;min-width:150px" maxlength="14">
+        <button class="btn pri" id="pmHfClone">${ic("save")} Clone to tag</button>
+      </div>
+    </details>
     <details class="panel">
       <summary style="cursor:pointer"><h3 style="display:inline">Raw output (advanced)</h3></summary>
       <pre class="mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(pmCleanRaw(pmState.lastOutput || s?.raw) || "No output yet.")}</pre>
@@ -2311,6 +2331,7 @@ function paintProxmark(message){
     try { pmState.status = await api("/api/pm3/status"); paintProxmark(); }
     catch (e){ paintProxmark(e.message); }
   };
+  $("#pmLibBtn").onclick = () => go("library");
   $("#pmScan").onclick = async () => {
     paintProxmark("Scanning — trying HF then LF…");
     try {
@@ -2319,6 +2340,7 @@ function paintProxmark(message){
       pmState.scanFound = res.found;
       pmState.hfUid = res.found === "hf" ? res.uid : "";
       pmState.hfTagType = res.found === "hf" ? res.tag_type : "";
+      pmState.hfCloneUid = res.found === "hf" ? res.uid : pmState.hfCloneUid;
       pmState.emId = res.found === "lf" ? res.uid : pmState.emId;
       paintProxmark(res.found === "disconnected" ? "No Proxmark3 detected" : "");
     } catch (e){
@@ -2378,6 +2400,23 @@ function paintProxmark(message){
       paintProxmark(e.message);
     }
   };
+  $("#pmHfCloneUid").oninput = (e) => { pmState.hfCloneUid = e.target.value.trim().toUpperCase(); };
+  $("#pmHfClone").onclick = async () => {
+    const uid = $("#pmHfCloneUid").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{8}([0-9A-F]{6})?$/.test(uid)) return toast("UID must be 4 or 7 hex bytes (8 or 14 hex characters)");
+    paintProxmark(`Cloning ${uid} to magic card…`);
+    try {
+      const res = await api("/api/pm3/hf/clone-uid", {
+        method:"POST", body: JSON.stringify({ uid }),
+      });
+      pmState.lastOutput = res.raw || "";
+      paintProxmark(res.message);
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      paintProxmark(e.message);
+    }
+  };
+
   const pmLfSave = $("#pmLfSave");
   if (pmLfSave) pmLfSave.onclick = async () => {
     const name = $("#pmLfSaveName").value.trim();

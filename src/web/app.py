@@ -570,6 +570,18 @@ async def pm3_clone_em410x(request: CloneEm410xRequest):
     return {"ok": True, "message": message, "raw": raw}
 
 
+class CloneHfUidRequest(BaseModel):
+    uid: str
+
+
+@app.post("/api/pm3/hf/clone-uid")
+async def pm3_clone_hf_uid(request: CloneHfUidRequest):
+    ok, message, raw = await run_in_threadpool(pmweb.clone_mifare_uid, request.uid)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw}
+
+
 # ---------------------------------------------------------------------------
 # Settings: feature toggles -- shared with the Tkinter app via the same file
 # ---------------------------------------------------------------------------
