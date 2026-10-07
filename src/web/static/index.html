@@ -2194,6 +2194,12 @@ async function btPower(on){
    one LF clone path the pm3 client actually supports as a single command. */
 const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", hfCloneUid: "", scanFound: null, hfVerify: null, lfVerify: null };
 
+// Guided "Clone a card" flow -- read, swap, write, auto-verify -- as a
+// straight line of big buttons instead of expecting the person to find and
+// operate the separate Scan/Clone/Verify controls themselves in the right
+// order. Those controls stay put under Advanced for manual/edge-case use.
+const pmWizard = { step: "start", found: null, error: "", target: "t55x7", result: null };
+
 // `hf search`/`lf search` output is mostly spinner-frame noise -- strip the
 // bare "[\]"/"[|]"/"[/]"/"[-]" progress lines and blank lines so the
 // collapsed raw-output panel is actually readable instead of a wall of
@@ -2243,10 +2249,72 @@ RENDER.proxmark = async () => {
   paintProxmark();
 };
 
+function renderWizard(){
+  const w = pmWizard;
+  const bigBtn = "min-height:52px;font-size:16px;width:100%";
+  if (w.step === "swap" && w.found){
+    const needs = w.found.kind === "hf"
+      ? "You need a Gen1a \"magic\" / \"UID\" blank card — an ordinary card can't be rewritten."
+      : "You need a blank T5577, Q5/T5555, or EM4305/4469 fob.";
+    return `<div class="panel">
+      <h3>Clone a card — step 2 of 3</h3>
+      <div class="row"><span class="k">Found</span>
+        <span class="v">${esc(w.found.tagType)} (${esc(w.found.uid)})</span></div>
+      <div class="d" style="margin:10px 0">Remove that card, and put your <b>blank</b> card on the
+        reader instead. ${esc(needs)}</div>
+      ${w.found.kind === "lf" ? `<div class="btnrow" style="margin-bottom:10px">
+        <select id="wizTarget" style="flex:1;min-height:44px">
+          <option value="t55x7" ${w.target === "t55x7" ? "selected" : ""}>Blank is a T5577</option>
+          <option value="q5" ${w.target === "q5" ? "selected" : ""}>Blank is a Q5/T5555</option>
+          <option value="em4305" ${w.target === "em4305" ? "selected" : ""}>Blank is an EM4305/4469</option>
+        </select>
+      </div>` : ""}
+      <div class="btnrow">
+        <button class="btn pri" id="wizWrite" style="${bigBtn}">${ic("save")} Write to blank card</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="wizCancel">Start over</button>
+      </div>
+      ${w.error ? `<div class="row" style="margin-top:8px">
+        <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+    </div>`;
+  }
+  if (w.step === "result" && w.result){
+    return `<div class="panel">
+      <h3>Clone a card — done</h3>
+      <div class="row" style="margin:8px 0">
+        <span class="v" style="font-size:16px;color:var(${w.result.ok ? "--green" : "--red"})">
+          ${w.result.ok ? "✓" : "⚠"} ${esc(w.result.text)}</span>
+      </div>
+      <div class="btnrow">
+        ${!w.result.ok ? `<button class="btn pri" id="wizRetryWrite" style="${bigBtn}">
+          ${ic("refresh")} Try writing again</button>` : ""}
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn ${w.result.ok ? "pri" : ""}" id="wizCancel" style="${bigBtn}">
+          ${ic("antenna")} Clone another card</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <h3>Clone a card — step 1 of 3</h3>
+    <div class="d" style="margin-bottom:10px">Put the card you want to copy flat on the reader.</div>
+    <div class="btnrow">
+      <button class="btn pri" id="wizRead" style="${bigBtn}">${ic("antenna")} Read card</button>
+    </div>
+    ${w.error ? `<div class="row" style="margin-top:8px">
+      <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+  </div>`;
+}
+
 function paintProxmark(message){
   const s = pmState.status;
   $("#v-proxmark").innerHTML = `
     ${message ? `<div class="banner">${ic("alert")}<div>${esc(message)}</div></div>` : ""}
+    ${renderWizard()}
+    <details class="panel" ${pmState.scanFound || pmState.hfVerify || pmState.lfVerify ? "open" : ""}>
+    <summary style="cursor:pointer"><h3 style="display:inline">Advanced / manual tools</h3></summary>
+    <div style="margin-top:10px">
     <div class="panel">
       <div class="row"><span class="k">Device</span>
         <span class="v">${s?.connected ? "Connected" : "Not connected"}</span></div>
@@ -2336,7 +2404,77 @@ function paintProxmark(message){
     <details class="panel">
       <summary style="cursor:pointer"><h3 style="display:inline">Raw output (advanced)</h3></summary>
       <pre class="mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(pmCleanRaw(pmState.lastOutput || s?.raw) || "No output yet.")}</pre>
+    </details>
+    </div>
     </details>`;
+
+  const wizRead = $("#wizRead");
+  if (wizRead) wizRead.onclick = async () => {
+    pmWizard.error = "";
+    paintProxmark("Reading the card on the reader…");
+    try {
+      const res = await api("/api/pm3/scan", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      if (res.found === "hf" || res.found === "lf"){
+        pmWizard.found = { kind: res.found, uid: res.uid, tagType: res.found === "hf" ? res.tag_type : "EM410x key fob" };
+        pmWizard.step = "swap";
+        paintProxmark();
+      } else if (res.found === "disconnected"){
+        pmWizard.error = "No Proxmark3 detected — check the USB cable.";
+        paintProxmark();
+      } else {
+        pmWizard.error = "No card found — make sure it's flat on the reader and try again.";
+        paintProxmark();
+      }
+    } catch (e){
+      pmWizard.error = e.message;
+      paintProxmark();
+    }
+  };
+  const wizTarget = $("#wizTarget");
+  if (wizTarget) wizTarget.onchange = (e) => { pmWizard.target = e.target.value; };
+  async function wizDoWrite(){
+    pmWizard.error = "";
+    paintProxmark("Writing to the blank card…");
+    try {
+      const res = pmWizard.found.kind === "hf"
+        ? await api("/api/pm3/hf/clone-uid", { method:"POST", body: JSON.stringify({ uid: pmWizard.found.uid }) })
+        : await api("/api/pm3/lf/em410x/clone", { method:"POST", body: JSON.stringify({ id: pmWizard.found.uid, target: pmWizard.target }) });
+      pmState.lastOutput = res.raw || "";
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmWizard.step = "result";
+      pmWizard.result = { ok:false, text: `Writing failed — ${e.message}. Make sure the blank card is on the reader and try again.` };
+      paintProxmark();
+      return;
+    }
+    paintProxmark("Checking the new card matches…");
+    const expected = pmWizard.found.uid.toUpperCase();
+    try {
+      const vres = pmWizard.found.kind === "hf"
+        ? await api("/api/pm3/read/hf", { method:"POST" })
+        : await api("/api/pm3/lf/em410x/read", { method:"POST" });
+      pmState.lastOutput = vres.raw || pmState.lastOutput;
+      const got = ((pmWizard.found.kind === "hf" ? vres.uid : vres.id) || "").toUpperCase();
+      pmWizard.result = got === expected
+        ? { ok:true, text: `Done — the new card matches (${got}).` }
+        : { ok:false, text: got ? `Didn't match — new card reads as ${got}, expected ${expected}.` : "Couldn't read the new card back — make sure it's still on the reader." };
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmWizard.result = { ok:false, text: "Couldn't read the new card back — make sure it's still on the reader." };
+    }
+    pmWizard.step = "result";
+    paintProxmark();
+  }
+  const wizWrite = $("#wizWrite");
+  if (wizWrite) wizWrite.onclick = wizDoWrite;
+  const wizRetryWrite = $("#wizRetryWrite");
+  if (wizRetryWrite) wizRetryWrite.onclick = wizDoWrite;
+  const wizCancel = $("#wizCancel");
+  if (wizCancel) wizCancel.onclick = () => {
+    pmWizard.step = "start"; pmWizard.found = null; pmWizard.error = ""; pmWizard.result = null;
+    paintProxmark();
+  };
 
   $("#pmRefresh").onclick = async () => {
     paintProxmark("Checking for a Proxmark3…");
