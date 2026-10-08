@@ -54,7 +54,7 @@ tools:
       UID/type, save it to your library, and clone or emulate it later.
 
   - id: proxmark
-    name: Proxmark3
+    name: RFID & Key Fobs
     icon: chip
     category: Hardware Tools
     kind: builtin

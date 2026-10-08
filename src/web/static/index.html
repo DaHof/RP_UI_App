@@ -687,7 +687,7 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
    =========================================================================== */
 const TITLES = {
   home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
-  bluetooth:"Bluetooth", proxmark:"Proxmark3", msr:"Magstripe Cards", diag:"Diagnostics",
+  bluetooth:"Bluetooth", proxmark:"RFID & Key Fobs", msr:"Magstripe Cards", diag:"Diagnostics",
   pins:"GPIO Pins", mmwave:"mmWave Radar", wifiscan:"Network Scanner",
   settings:"Settings", themes:"Themes",
 };
@@ -1631,7 +1631,7 @@ const FEATURE_LABELS = [
   ["IR", "Infrared", "Hides the Infrared tile on Home when off"],
   ["Bluetooth", "Bluetooth", "Hides the Bluetooth tile on Home when off"],
   ["WiFi", "Wi-Fi", "Kismet / Wifite tiles are not gated by this flag"],
-  ["Proxmark", "Proxmark3", "Hides the Proxmark3 tile on Home when off"],
+  ["Proxmark", "RFID & Key Fobs", "Hides the RFID & Key Fobs tile on Home when off"],
 ];
 
 RENDER.settings = async () => {
@@ -2358,7 +2358,7 @@ function paintProxmark(message){
         <span class="v">${s?.connected ? "Connected" : "Not connected"}</span></div>
       ${s?.port ? `<div class="row"><span class="k">Port</span><span class="v mono">${esc(s.port)}</span></div>` : ""}
       ${!s?.connected ? `<div class="srow"><span class="k">Note</span>
-        <span class="d">${esc(s?.detail || "No Proxmark3 detected")}</span></div>` : ""}
+        <span class="d">${esc(s?.detail || "No card reader detected")}</span></div>` : ""}
       <div class="btnrow" style="margin-top:8px">
         <button class="btn pri" id="pmScan">${ic("antenna")} Scan card</button>
         <button class="btn" id="pmRefresh">${ic("refresh")} Device info</button>
@@ -2392,7 +2392,7 @@ function paintProxmark(message){
         <h3>No card found</h3>
         <div class="d">Hold the card flat against the antenna (not just nearby) and scan again.</div>`
       : pmState.scanFound === "disconnected" ? `
-        <h3>No Proxmark3 detected</h3>
+        <h3>No card reader detected</h3>
         <div class="d">Check the USB connection, then press Device info to recheck.</div>`
       : `<div class="empty">Press Scan card to read whatever's on the antenna.</div>`}
     </div>
@@ -2458,7 +2458,7 @@ function paintProxmark(message){
         pmWizard.step = "swap";
         paintProxmark();
       } else if (res.found === "disconnected"){
-        pmWizard.error = "No Proxmark3 detected — check the USB cable.";
+        pmWizard.error = "No card reader detected — check the USB cable.";
         paintProxmark();
       } else {
         pmWizard.error = "No card found — make sure it's flat on the reader and try again.";
@@ -2515,7 +2515,7 @@ function paintProxmark(message){
   };
 
   $("#pmRefresh").onclick = async () => {
-    paintProxmark("Checking for a Proxmark3…");
+    paintProxmark("Checking for a card reader…");
     try { pmState.status = await api("/api/pm3/status"); paintProxmark(); }
     catch (e){ paintProxmark(e.message); }
   };
@@ -2530,7 +2530,7 @@ function paintProxmark(message){
       pmState.hfTagType = res.found === "hf" ? res.tag_type : "";
       pmState.hfCloneUid = res.found === "hf" ? res.uid : pmState.hfCloneUid;
       pmState.emId = res.found === "lf" ? res.uid : pmState.emId;
-      paintProxmark(res.found === "disconnected" ? "No Proxmark3 detected" : "");
+      paintProxmark(res.found === "disconnected" ? "No card reader detected" : "");
     } catch (e){
       pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
       pmState.scanFound = "none";

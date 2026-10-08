@@ -71,7 +71,7 @@ def find_port() -> str | None:
 def device_info() -> dict:
     port = find_port()
     if not port:
-        return {"connected": False, "port": "", "detail": "No Proxmark3 detected", "raw": ""}
+        return {"connected": False, "port": "", "detail": "No card reader detected", "raw": ""}
 
     result = shell.run(["proxmark3", "-p", port, "-c", "hw status"], timeout=CONNECT_TIMEOUT)
     if not result.ok:
@@ -82,7 +82,7 @@ def device_info() -> dict:
 def _search(command: str) -> tuple[bool, str, str]:
     port = find_port()
     if not port:
-        return False, "No Proxmark3 detected", ""
+        return False, "No card reader detected", ""
 
     result = shell.run(["proxmark3", "-p", port, "-c", command], timeout=SEARCH_TIMEOUT)
     if not result.ok:
@@ -143,7 +143,7 @@ def read_em410x() -> tuple[bool, str, str, str | None]:
     this is regex-on-stdout. Returns (ok, message, raw, tag_id)."""
     port = find_port()
     if not port:
-        return False, "No Proxmark3 detected", "", None
+        return False, "No card reader detected", "", None
 
     result = shell.run(["proxmark3", "-p", port, "-c", "lf em 410x reader"], timeout=SEARCH_TIMEOUT)
     match = EM410X_ID_RE.search(result.stdout)
@@ -162,7 +162,7 @@ def clone_mifare_uid(uid_hex: str) -> tuple[bool, str, str]:
     real client feature rather than a best-effort guess."""
     port = find_port()
     if not port:
-        return False, "No Proxmark3 detected", ""
+        return False, "No card reader detected", ""
     clean = uid_hex.replace(":", "").replace(" ", "")
     if not re.fullmatch(r"[0-9A-Fa-f]{8}|[0-9A-Fa-f]{14}", clean):
         return False, "UID must be 4 or 7 hex bytes (8 or 14 hex characters)", ""
@@ -179,7 +179,7 @@ def clone_em410x(tag_id: str, target: str = "t55x7") -> tuple[bool, str, str]:
     the default T55x7 encoding (no extra flag)."""
     port = find_port()
     if not port:
-        return False, "No Proxmark3 detected", ""
+        return False, "No card reader detected", ""
     if not re.fullmatch(r"[0-9A-Fa-f]{10}", tag_id):
         return False, "ID must be 10 hex characters (5 bytes), e.g. 0F0368568B", ""
 
