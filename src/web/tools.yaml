@@ -69,7 +69,7 @@ tools:
       not implemented yet.
 
   - id: msr605x
-    name: MSR605X
+    name: Magstripe Cards
     icon: card
     category: Hardware Tools
     kind: builtin

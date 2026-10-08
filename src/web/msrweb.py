@@ -42,7 +42,7 @@ def device_info() -> dict:
     if _IMPORT_ERROR is not None:
         return {"connected": False, "detail": _unavailable_detail(), "model": None, "firmware": None, "coercivity": None}
     if not is_present():
-        return {"connected": False, "detail": "No MSR605X detected", "model": None, "firmware": None, "coercivity": None}
+        return {"connected": False, "detail": "No card reader detected", "model": None, "firmware": None, "coercivity": None}
     try:
         with MSR605X() as dev:
             if not dev.communication_test():
@@ -78,7 +78,7 @@ def read() -> tuple[bool, str, dict, bool]:
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail(), _EMPTY_TRACKS, False
     if not is_present():
-        return False, "No MSR605X detected", _EMPTY_TRACKS, False
+        return False, "No card reader detected", _EMPTY_TRACKS, False
 
     try:
         with MSR605X() as dev:
@@ -167,7 +167,7 @@ def write(track1: str | None, track2: str | None, track3: str | None) -> tuple[b
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail()
     if not is_present():
-        return False, "No MSR605X detected"
+        return False, "No card reader detected"
     try:
         with MSR605X() as dev:
             ok, _raw = dev.write_iso(track1, track2, track3)
@@ -182,7 +182,7 @@ def erase(track1: bool, track2: bool, track3: bool) -> tuple[bool, str]:
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail()
     if not is_present():
-        return False, "No MSR605X detected"
+        return False, "No card reader detected"
     try:
         with MSR605X() as dev:
             ok = dev.erase(track1, track2, track3)
@@ -196,7 +196,7 @@ def set_coercivity(hi: bool) -> tuple[bool, str]:
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail()
     if not is_present():
-        return False, "No MSR605X detected"
+        return False, "No card reader detected"
     try:
         with MSR605X() as dev:
             ok = dev.set_hico() if hi else dev.set_loco()
@@ -210,7 +210,7 @@ def set_bpi(track: int, bpi: int) -> tuple[bool, str]:
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail()
     if not is_present():
-        return False, "No MSR605X detected"
+        return False, "No card reader detected"
     try:
         with MSR605X() as dev:
             ok = dev.select_bpi(track, bpi)
@@ -229,7 +229,7 @@ def read_raw() -> tuple[bool, str, dict]:
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail(), _EMPTY_TRACKS
     if not is_present():
-        return False, "No MSR605X detected", _EMPTY_TRACKS
+        return False, "No card reader detected", _EMPTY_TRACKS
     try:
         with MSR605X() as dev:
             result = dev.read_raw()
@@ -255,7 +255,7 @@ def write_raw(track1: str | None, track2: str | None, track3: str | None) -> tup
     if _IMPORT_ERROR is not None:
         return False, _unavailable_detail()
     if not is_present():
-        return False, "No MSR605X detected"
+        return False, "No card reader detected"
     try:
         t1 = bytes.fromhex(track1) if track1 else None
         t2 = bytes.fromhex(track2) if track2 else None

@@ -687,7 +687,7 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
    =========================================================================== */
 const TITLES = {
   home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
-  bluetooth:"Bluetooth", proxmark:"Proxmark3", msr:"MSR605X", diag:"Diagnostics",
+  bluetooth:"Bluetooth", proxmark:"Proxmark3", msr:"Magstripe Cards", diag:"Diagnostics",
   pins:"GPIO Pins", mmwave:"mmWave Radar", wifiscan:"Network Scanner",
   settings:"Settings", themes:"Themes",
 };
@@ -2718,7 +2718,7 @@ function renderMsrWizard(){
         <button class="btn pri" id="wizMsrWrite" style="${bigBtn}">${ic("save")} Write to card</button>
       </div>
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn" id="wizMsrRetryRead">${ic("refresh")} Read the source card again</button>
+        ${w.note ? `<button class="btn" id="wizMsrRetryRead">${ic("refresh")} Read the source card again</button>` : ""}
         <button class="btn" id="wizMsrCancel">Start over</button>
       </div>
       ${w.error ? `<div class="row" style="margin-top:8px">
