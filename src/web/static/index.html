@@ -498,6 +498,7 @@ button:focus-visible,[role="switch"]:focus-visible,.mod:focus-visible{
     <button class="iconbtn" id="helpBtn" aria-label="What do the lights mean?"><svg class="ic"><use href="#i-info"/></svg></button>
     <button class="iconbtn" id="fsBtn" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
+    <button class="iconbtn" id="simpleBtn" aria-label="Simple Home"><svg class="ic"><use href="#i-home"/></svg></button>
   </header>
 
   <div class="banner bad connection-banner" id="connectionBanner" role="alert" hidden></div>
@@ -779,8 +780,20 @@ const TITLES = {
    single builtin tile here (NFC scanning has no separate tile, and WiFi's
    launch tools -- Kismet, Wifite -- aren't flag-gated software either). */
 const FEATURE_GATES = { bluetooth:"Bluetooth", proxmark:"Proxmark", ir:"IR" };
+// Walk-up stack for the header Back button, separate from the hash/URL
+// history. Simple Home is now 3 levels deep (home -> cards -> nfc/proxmark/
+// msr), and Back needs to go up ONE level, not always to the top -- so every
+// genuine forward navigation records the view it left, and Back pops it.
+// Hash-driven navigation (push=false: boot, browser back/forward, hashchange)
+// never touches this stack, only explicit in-app taps do.
+const navStack = [];
+let navigatingBack = false;
 function go(view, push = true){
   if (!TITLES[view]) view = "home";
+  if (push && !navigatingBack && state.view && state.view !== view){
+    navStack.push(state.view);
+  }
+  navigatingBack = false;
   // Leaving IR must stop its sweep/capture pollers, or they keep firing against
   // a view nobody is looking at.
   if (state.view === "ir" && view !== "ir") stopIRTimers();
@@ -790,6 +803,7 @@ function go(view, push = true){
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
   $("#back").hidden = view === "home";
+  paintSimpleBtn();
   $("main").scrollTop = 0;
   // Hash routing so a view survives a reload -- a kiosk that reboots into the
   // diagnostics screen should come back to it.
@@ -807,9 +821,24 @@ function routeFromHash(){
   return view || "home";
 }
 addEventListener("hashchange", () => go(routeFromHash(), false));
-$("#back").onclick = () => go("home");
+$("#back").onclick = () => {
+  const prev = navStack.pop();
+  navigatingBack = true;
+  go(prev || "home");
+};
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
 $("#helpBtn").onclick = showLegend;
+
+/* Jump straight back to Simple Home from anywhere (full dashboard, any tool
+   screen) -- hidden only when it would be a no-op (already looking at it).
+   "Expert tools" switches a device permanently into full mode with no
+   confirmation; this is the way back that doesn't require knowing Settings
+   has a toggle for it. Also called after any direct RENDER.home() call that
+   bypasses go(), e.g. the Simple Home "Expert tools" exit link itself. */
+function paintSimpleBtn(){
+  $("#simpleBtn").hidden = state.view === "home" && store.get("pipui_mode", "simple") === "simple";
+}
+$("#simpleBtn").onclick = () => { store.set("pipui_mode", "simple"); navStack.length = 0; go("home"); };
 
 /* ---- fullscreen / kiosk -------------------------------------------------
    Chromium --kiosk is the real answer on the Pi (see scripts/kiosk.sh); this
@@ -886,8 +915,10 @@ RENDER.home = () => {
         short:"NFC tags, key fobs & magstripe cards",
         desc:"Choose the kind of card or tag you have, then read, save, or copy it.",
       });
-    if (byId.ir) tasks.push({ ...byId.ir, name:"Use a remote", short:"Control a TV or air conditioner" });
-    if (byId.bluetooth) tasks.push({ ...byId.bluetooth, name:"Connect Bluetooth", short:"Pair headphones, speakers & controllers" });
+    if (byId.ir) tasks.push({ ...byId.ir, name:"Use a remote", short:"Control a TV or air conditioner",
+      desc: byId.ir.simple_desc });
+    if (byId.bluetooth) tasks.push({ ...byId.bluetooth, name:"Connect Bluetooth",
+      short:"Pair headphones, speakers & controllers", desc: byId.bluetooth.simple_desc });
     host.appendChild(el(`<div class="simple-head"><h2>What do you want to do?</h2>
       <button class="exit">Expert tools</button></div>`).firstChild);
     if (tasks.length){
@@ -898,7 +929,9 @@ RENDER.home = () => {
       host.appendChild(el(`<div class="empty">No everyday tasks are enabled.<br>
         An operator can mark tools with <span class="mono">simple: true</span> in tools.yaml.</div>`).firstChild);
     }
-    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); };
+    host.querySelector(".exit").onclick = () => {
+      store.set("pipui_mode", "full"); navStack.length = 0; RENDER.home(); paintSimpleBtn();
+    };
     return;
   }
 
@@ -992,7 +1025,7 @@ RENDER.cards = () => {
   host.innerHTML = `<div class="simple-head"><h2>What are you using?</h2></div>
     <div class="empty" style="padding:0 12px 14px">Choose the closest match. You can read first before saving or copying anything.</div>`;
   const grid = el(`<div class="simple-grid"></div>`).firstChild;
-  for (const t of tools) grid.appendChild(tile({ ...t, ...plainCopy[t.id] }));
+  for (const t of tools) grid.appendChild(tile({ ...t, ...plainCopy[t.id], desc: t.simple_desc }));
   host.appendChild(grid);
 };
 
@@ -1202,8 +1235,8 @@ RENDER.library = async () => {
   catch (e){ host.innerHTML = `<div class="banner bad">${ic("alert")}<div>${esc(e.message)}</div></div>`; return; }
 
   if (!data.count){
-    host.innerHTML = `<div class="empty">The library is empty.<br>
-      Saved tags are stored in <span class="mono">data/library.json</span>.</div>`;
+    host.innerHTML = `<div class="empty">Nothing saved yet.<br>
+      Scan or swipe something first, then save it here.</div>`;
     return;
   }
   host.innerHTML = `<div class="panel"><h3>${data.count} saved tag${data.count === 1 ? "" : "s"}</h3>
@@ -2463,7 +2496,7 @@ function renderWizard(){
   }
   if (w.step === "result" && w.result){
     return `<div class="panel">
-      <h3>Clone a card — done</h3>
+      <h3>Clone a card — ${w.result.ok ? "done" : "didn't work"}</h3>
       <div class="row" style="margin:8px 0">
         <span class="v" style="font-size:16px;color:var(${w.result.ok ? "--green" : "--red"})">
           ${w.result.ok ? "✓" : "⚠"} ${esc(w.result.text)}</span>
@@ -2894,7 +2927,7 @@ function renderMsrWizard(){
   }
   if (w.step === "result" && w.result){
     return `<div class="panel">
-      <h3>Clone a card — done</h3>
+      <h3>Clone a card — ${w.result.ok ? "done" : "didn't work"}</h3>
       <div class="row" style="margin:8px 0">
         <span class="v" style="font-size:16px;color:var(${w.result.ok ? "--green" : "--red"})">
           ${w.result.ok ? "✓" : "⚠"} ${esc(w.result.text)}</span>

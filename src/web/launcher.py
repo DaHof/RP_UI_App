@@ -109,6 +109,8 @@ class Tool:
     desc: str = ""                   # longer explanation, shown in the UI's info popover
     root: bool = False
     simple: bool = False             # shown on the simplified home screen (see Settings)
+    simple_desc: str = ""            # plain-language desc for Simple Home's info popover;
+                                      # falls back to `desc` when empty (see as_dicts)
 
     @property
     def binary(self) -> str:
@@ -182,6 +184,7 @@ def load_tools() -> tuple[list[Tool], str]:
                 desc=str(entry.get("desc", "")),
                 root=bool(entry.get("root", False)),
                 simple=bool(entry.get("simple", False)),
+                simple_desc=str(entry.get("simple_desc", "")),
             )
         )
     return tools, ""
@@ -283,6 +286,7 @@ class Launcher:
                     "note": tool.note,
                     "short": tool.short,
                     "desc": tool.desc,
+                    "simple_desc": tool.simple_desc or tool.desc,
                     "root": tool.root,
                     "simple": tool.simple,
                     "hw_status": health_channels.get(BUILTIN_HEALTH_CHANNEL.get(tool.id)),

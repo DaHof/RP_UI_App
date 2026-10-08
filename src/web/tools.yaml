@@ -52,6 +52,9 @@ tools:
     desc: >-
       Reads 13.56MHz tags with the PN532 reader. Scan a card to see its
       UID/type, save it to your library, and clone or emulate it later.
+    simple_desc: >-
+      Hold a card or tag near the reader to see what's on it, save it, or
+      make a copy.
 
   - id: proxmark
     name: RFID & Key Fobs
@@ -67,6 +70,8 @@ tools:
       save, and clone (EM410x to a blank fob, or MIFARE UID to a Gen1a magic
       card) are wired up to the real `proxmark3` client; dump and sniff are
       not implemented yet.
+    simple_desc: >-
+      Read a key fob or card, save it, or copy it onto a blank one.
 
   - id: msr605x
     name: Magstripe Cards
@@ -81,6 +86,9 @@ tools:
       MSR605X connected by USB HID. Read a card to see its track data, save
       it to the Card Library, or clone it straight onto a blank/rewritable
       card with a guided wizard.
+    simple_desc: >-
+      Swipe a card to see what's on it, save it, or copy it onto a blank
+      card.
 
   - id: library
     name: Card Library
@@ -94,6 +102,8 @@ tools:
       Browse everything saved from the NFC, Proxmark3, or MSR605X tools,
       rename or delete entries, or press Clone to jump back to the right
       tool with that card's ID or track data already filled in.
+    simple_desc: >-
+      Everything you've saved from scanning or swiping cards and tags.
 
   - id: ir
     name: Infrared
@@ -107,6 +117,9 @@ tools:
       Captures and replays IR remote signals (TVs, ACs, etc.) over the
       GPIO-wired transmitter/receiver. Includes a saved-remotes library and
       a universal-remote scan mode.
+    simple_desc: >-
+      Point the remote at the receiver to save its buttons, then use them
+      to control the TV or AC from here.
 
   - id: bluetooth
     name: Bluetooth
@@ -119,6 +132,9 @@ tools:
     desc: >-
       Scans for nearby Bluetooth devices and lets you pair, trust, and
       connect to them via BlueZ.
+    simple_desc: >-
+      Find nearby headphones, speakers, or other Bluetooth devices and
+      connect to them.
 
   - id: diag
     name: Diagnostics
