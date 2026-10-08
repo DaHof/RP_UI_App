@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PIP-UI</title>
 <style>
 /* ===========================================================================
@@ -104,6 +104,7 @@ body{
 /* Chromium --kiosk still shows a pointer; ?kiosk=1 hides it without needing
    unclutter installed. */
 body.kiosk,body.kiosk *{cursor:none}
+.mono,.readout,.row .v,.srow .d,.banner{-webkit-user-select:text;user-select:text}
 #app{height:100%;display:flex;flex-direction:column}
 .mono{font-family:var(--font-mono)}
 svg.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;
@@ -132,7 +133,10 @@ header{
 .plate{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;
   letter-spacing:.15em;color:var(--ink);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-.pwr{width:7px;height:7px;border-radius:50%;flex:none;background:var(--green)}
+.pwr{width:7px;height:7px;border-radius:50%;flex:none;background:var(--ink-faint)}
+.pwr[data-s="online"]{background:var(--green)}
+.pwr[data-s="stale"],.pwr[data-s="warn"]{background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.pwr[data-s="offline"],.pwr[data-s="fail"]{background:var(--red);border-radius:2px}
 .presence{display:flex;gap:10px;margin-left:auto;align-items:center}
 .pchip{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
   letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint)}
@@ -249,6 +253,8 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .simple-grid .mod .nm{font-size:15px}
 .simple-grid .mod .cmd{font-family:var(--font-ui);font-size:12px;white-space:normal;
   text-overflow:clip;overflow:visible}
+.modwrap{position:relative;min-width:0;display:flex}
+.modwrap .mod{width:100%;height:100%}
 .mod{position:relative;display:flex;flex-direction:column;gap:4px;padding:9px 10px;
   min-height:70px;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
@@ -267,10 +273,13 @@ main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:11px 12px 16p
 .mod.on svg.ic{color:var(--accent)}
 .mod.off{opacity:.45;cursor:not-allowed}
 .mod .topr{display:flex;align-items:center;gap:4px}
-.mod .info,.mod .openlink{display:flex;align-items:center;justify-content:center;color:var(--ink-dim);
-  padding:9px;margin:-9px;border-radius:50%}
-.mod .info svg.ic,.mod .openlink svg.ic{width:15px;height:15px}
-.mod .info:hover,.mod .info:active,.mod .openlink:hover,.mod .openlink:active{color:var(--ink);background:rgba(127,127,127,.15)}
+.tile-actions{position:absolute;z-index:2;top:0;right:0;display:flex}
+.tile-action{width:44px;height:44px;display:grid;place-items:center;color:var(--ink-dim);
+  padding:0;border:0;border-radius:6px;cursor:pointer;background:transparent}
+.tile-action svg.ic{width:16px;height:16px}
+.tile-action:hover,.tile-action:active{color:var(--ink);background:rgba(127,127,127,.15)}
+.mod.has-actions .topr{margin-right:40px}
+.mod.has-two-actions .topr{margin-right:80px}
 .tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);
   border:1px solid var(--metal);border-radius:3px;padding:1px 4px;white-space:nowrap}
 .tag.warn{color:var(--red);border-color:var(--red)}
@@ -315,6 +324,8 @@ input[type="text"],input[type="search"],select{font:inherit;font-size:12px;color
   padding:8px 10px;min-height:44px;width:100%}
 input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-2px}
 input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
+button:focus-visible,[role="switch"]:focus-visible,.mod:focus-visible{
+  outline:3px solid var(--accent);outline-offset:2px}
 
 .progress{height:8px;border-radius:4px;background:var(--recess);overflow:hidden;
   border:1px solid var(--metal-lo);margin:9px 0}
@@ -347,14 +358,17 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
   background:var(--recess);border:1px solid var(--metal);padding:0;pointer-events:none}
 .swbtn::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;
   border-radius:50%;background:var(--ink-dim);transition:transform .14s ease,background .14s ease}
-.swbtn[aria-pressed="true"]{border-color:var(--accent)}
-.swbtn[aria-pressed="true"]::after{transform:translateX(20px);background:var(--accent)}
+.swbtn[data-checked="true"]{border-color:var(--accent)}
+.swbtn[data-checked="true"]::after{transform:translateX(20px);background:var(--accent)}
 
 .banner{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--accent);
   background:var(--recess);border:1px solid var(--metal);border-radius:7px;
   padding:10px 12px;margin-bottom:10px;line-height:1.4}
 .banner svg.ic{width:16px;height:16px;margin-top:1px}
 .banner.bad{color:var(--red)}
+.connection-banner{flex:none;margin:8px 12px 0}
+.connection-banner[hidden]{display:none}
+.connection-banner .btn{margin-left:auto;flex:none}
 .empty{text-align:center;color:var(--ink-faint);font-size:12.5px;padding:26px 12px;line-height:1.5}
 
 /* ---- pin header map ---- */
@@ -416,12 +430,15 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
   word-break:break-all}
 
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(16px);
-  z-index:var(--z-toast);opacity:0;pointer-events:none;padding:10px 16px;border-radius:7px;
-  font-size:12.5px;max-width:86vw;text-align:center;
+  z-index:var(--z-toast);opacity:0;pointer-events:none;padding:10px 12px 10px 16px;border-radius:7px;
+  font-size:12.5px;max-width:86vw;text-align:left;display:flex;align-items:center;gap:10px;
   background:linear-gradient(180deg,var(--face-hi),var(--face-lo));
   border:1px solid var(--metal);border-top-color:var(--metal-hi);
   box-shadow:0 4px 16px rgba(0,0,0,.55);transition:opacity .18s,transform .18s}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.on.bad{color:var(--red);pointer-events:auto}
+#toastDismiss{min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;
+  cursor:pointer;font:inherit;text-decoration:underline;text-underline-offset:2px}
 </style>
 </head>
 <body>
@@ -474,18 +491,20 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
 <div id="app">
   <header>
     <button class="iconbtn" id="back" hidden aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
-    <div class="plate"><span class="pwr" id="pwr"></span><span id="title">PIP-UI</span></div>
+    <div class="plate"><span class="pwr" id="pwr" role="img" aria-label="Dashboard status unknown"></span><span id="title">PIP-UI</span></div>
     <div class="presence" id="presence"></div>
     <div class="lcd"><div class="spec" id="spec"></div>
       <div class="lcd-read mono"><span id="lcdCount">0</span> ACTIVE · <span id="lcdClock">--:--</span></div></div>
     <button class="iconbtn" id="helpBtn" aria-label="What do the lights mean?"><svg class="ic"><use href="#i-info"/></svg></button>
     <button class="iconbtn" id="fsBtn" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
-    <button class="iconbtn" id="simpleBtn" aria-label="Simple Home"><svg class="ic"><use href="#i-home"/></svg></button>
   </header>
+
+  <div class="banner bad connection-banner" id="connectionBanner" role="alert" hidden></div>
 
   <main>
     <section class="view on" id="v-home"></section>
+    <section class="view" id="v-cards"></section>
     <section class="view" id="v-nfc"></section>
     <section class="view" id="v-library"></section>
     <section class="view" id="v-ir"></section>
@@ -501,7 +520,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
   </main>
 </div>
 
-<div id="modal"><div class="box">
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle" aria-describedby="mBody"><div class="box" tabindex="-1">
   <h4 id="mTitle">Are you sure?</h4>
   <p id="mBody"></p>
   <div class="warn mono" id="mWarn" hidden></div>
@@ -511,7 +530,9 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
   </div>
 </div></div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true">
+  <span id="toastText"></span><button id="toastDismiss" type="button" hidden>Dismiss</button>
+</div>
 
 <script>
 "use strict";
@@ -530,13 +551,24 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, v); } catch {} },
 };
 
-function toast(msg){
+function dismissToast(){
   const t = $("#toast");
-  t.textContent = msg;
+  t.classList.remove("on", "bad");
+  clearTimeout(t._t);
+}
+function toast(msg, { error } = {}){
+  const t = $("#toast");
+  const looksLikeError = error ?? /\b(error|failed|failure|refused|unavailable|unreachable|invalid|required|missing|not installed|not detected|couldn.?t|can.?t|enter|fill|select)\b|HTTP\s+\d{3}|^No\s.+found/i.test(msg);
+  $("#toastText").textContent = msg;
+  $("#toastDismiss").hidden = !looksLikeError;
+  t.setAttribute("role", looksLikeError ? "alert" : "status");
+  t.setAttribute("aria-live", looksLikeError ? "assertive" : "polite");
+  t.classList.toggle("bad", looksLikeError);
   t.classList.add("on");
   clearTimeout(t._t);
-  t._t = setTimeout(() => t.classList.remove("on"), 2200);
+  if (!looksLikeError) t._t = setTimeout(dismissToast, 3200);
 }
+$("#toastDismiss").onclick = dismissToast;
 
 function fmtUptime(s){
   if (!s) return "just started";
@@ -565,6 +597,39 @@ function ago(iso){
   return `${Math.floor(d/86400)}d ago`;
 }
 
+let modalReturnFocus = null;
+let modalEscape = null;
+function modalKeydown(e){
+  if (e.key === "Escape"){
+    e.preventDefault();
+    modalEscape?.();
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const focusable = [...$("#modal").querySelectorAll("button:not([hidden]):not([disabled]),[tabindex]:not([tabindex='-1'])")];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+}
+function openModal(onEscape, initialFocus){
+  modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  modalEscape = onEscape;
+  $("#modal").classList.add("on");
+  document.addEventListener("keydown", modalKeydown);
+  $("#modal").onclick = e => { if (e.target === $("#modal")) modalEscape?.(); };
+  requestAnimationFrame(() => (initialFocus || $("#modal .box")).focus());
+}
+function closeModal(){
+  $("#modal").classList.remove("on");
+  $("#modal").onclick = null;
+  document.removeEventListener("keydown", modalKeydown);
+  modalEscape = null;
+  const target = modalReturnFocus;
+  modalReturnFocus = null;
+  if (target?.isConnected) requestAnimationFrame(() => target.focus());
+}
+
 /* Confirm gate for anything destructive or privileged. */
 function confirmAction({ title, body, detail, confirmLabel = "Confirm" }){
   return new Promise(resolve => {
@@ -574,14 +639,14 @@ function confirmAction({ title, body, detail, confirmLabel = "Confirm" }){
     warn.hidden = !detail;
     warn.textContent = detail || "";
     $("#mYes").textContent = confirmLabel;
-    $("#modal").classList.add("on");
     const done = (ok) => {
-      $("#modal").classList.remove("on");
+      closeModal();
       $("#mYes").onclick = $("#mNo").onclick = null;
       resolve(ok);
     };
     $("#mYes").onclick = () => done(true);
     $("#mNo").onclick  = () => done(false);
+    openModal(() => done(false), $("#mNo"));
   });
 }
 
@@ -594,14 +659,14 @@ function showInfo(title, body){
   $("#mNo").hidden = true;
   $("#mYes").textContent = "Close";
   $("#mYes").classList.remove("danger");
-  $("#modal").classList.add("on");
   const close = () => {
-    $("#modal").classList.remove("on");
+    closeModal();
     $("#mYes").onclick = null;
     $("#mNo").hidden = false;
     $("#mYes").classList.add("danger");
   };
   $("#mYes").onclick = close;
+  openModal(close, $("#mYes"));
 }
 
 /* Plain-language legend for the LED states and tile badges -- there was
@@ -627,34 +692,50 @@ function showLegend(){
   $("#mNo").hidden = true;
   $("#mYes").textContent = "Close";
   $("#mYes").classList.remove("danger");
-  $("#modal").classList.add("on");
   const close = () => {
-    $("#modal").classList.remove("on");
+    closeModal();
     $("#mYes").onclick = null;
     $("#mNo").hidden = false;
     $("#mYes").classList.add("danger");
   };
   $("#mYes").onclick = close;
+  openModal(close, $("#mYes"));
 }
 
 /* ===========================================================================
    8. API
    =========================================================================== */
-const state = { health:null, tools:[], toolsErr:"", settings:null, view:"home", booted:false };
+const state = {
+  health:null, tools:[], toolsErr:"", settings:null, view:"home", booted:false,
+  connection:"starting", connectionError:"", lastDataAt:0,
+};
 
-async function api(path, opts){
-  const res = await fetch(path, { headers:{ "Content-Type":"application/json" }, ...opts });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    // Several endpoints (pm3 search/read) return a non-2xx for a normal
-    // negative result ("no tag found"), not just real failures -- the body
-    // still carries useful detail (raw output, parsed id, ...), so it rides
-    // along on the thrown Error instead of being dropped on the floor.
-    const err = new Error(body?.detail || body?.message || `HTTP ${res.status}`);
-    err.body = body;
-    throw err;
+async function api(path, opts = {}){
+  const { timeoutMs = 0, ...fetchOpts } = opts;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(path, {
+      headers:{ "Content-Type":"application/json" }, ...fetchOpts,
+      signal:fetchOpts.signal || controller?.signal,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      // Several endpoints (pm3 search/read) return a non-2xx for a normal
+      // negative result ("no tag found"), not just real failures -- the body
+      // still carries useful detail (raw output, parsed id, ...), so it rides
+      // along on the thrown Error instead of being dropped on the floor.
+      const err = new Error(body?.detail || body?.message || `HTTP ${res.status}`);
+      err.body = body;
+      throw err;
+    }
+    return body;
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("Dashboard request timed out — check the connection and try again.");
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return body;
 }
 
 /* ===========================================================================
@@ -687,7 +768,7 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
    10. ROUTER
    =========================================================================== */
 const TITLES = {
-  home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
+  home:"PIP-UI", cards:"Cards & Tags", nfc:"NFC / RFID", library:"Card Library", ir:"Infrared",
   bluetooth:"Bluetooth", proxmark:"RFID & Key Fobs", msr:"Magstripe Cards", diag:"Diagnostics",
   pins:"GPIO Pins", mmwave:"mmWave Radar", wifiscan:"Network Scanner",
   settings:"Settings", themes:"Themes",
@@ -709,7 +790,6 @@ function go(view, push = true){
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
   $("#back").hidden = view === "home";
-  paintSimpleBtn();
   $("main").scrollTop = 0;
   // Hash routing so a view survives a reload -- a kiosk that reboots into the
   // diagnostics screen should come back to it.
@@ -730,14 +810,6 @@ addEventListener("hashchange", () => go(routeFromHash(), false));
 $("#back").onclick = () => go("home");
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
 $("#helpBtn").onclick = showLegend;
-
-/* Jump straight to Simple Home from anywhere -- hidden only when it would be
-   a no-op (already looking at it). Also called after any direct RENDER.home()
-   call that bypasses go(), e.g. the "More tools" exit link. */
-function paintSimpleBtn(){
-  $("#simpleBtn").hidden = state.view === "home" && store.get("pipui_mode", "simple") === "simple";
-}
-$("#simpleBtn").onclick = () => { store.set("pipui_mode", "simple"); go("home"); };
 
 /* ---- fullscreen / kiosk -------------------------------------------------
    Chromium --kiosk is the real answer on the Pi (see scripts/kiosk.sh); this
@@ -762,7 +834,7 @@ if (new URLSearchParams(location.search).has("kiosk")) document.body.classList.a
 
 // A long press would otherwise raise the browser context menu on top of a
 // kiosk that has no chrome to dismiss it with.
-addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("contextmenu", e => { if (document.body.classList.contains("kiosk")) e.preventDefault(); });
 
 /* ===========================================================================
    11. VIEWS
@@ -801,18 +873,32 @@ RENDER.home = () => {
   });
 
   if (store.get("pipui_mode", "simple") === "simple"){
-    const simple = visible.filter(t => t.simple);
-    host.appendChild(el(`<div class="simple-head"><h2>PIP-UI</h2>
-      <button class="exit">More tools</button></div>`).firstChild);
-    if (!simple.length){
-      host.appendChild(el(`<div class="empty">No tools are marked for Simple Home yet.<br>
-        Turn on a tool under Settings → Simple Home.</div>`).firstChild);
-    } else {
+    const simpleVisible = visible.filter(t => t.simple);
+    const byId = Object.fromEntries(simpleVisible.map(t => [t.id, t]));
+    const cardTools = [byId.nfc, byId.proxmark, byId.msr605x].filter(Boolean);
+    const cardStates = cardTools.map(t => t.hw_status).filter(Boolean);
+    const cardStatus = cardStates.includes("PASS") ? "PASS"
+      : cardStates.includes("WARN") ? "WARN" : cardStates.includes("FAIL") ? "FAIL" : "idle";
+    const tasks = [];
+    if (cardTools.length || byId.library) tasks.push({
+        id:"cards", name:"Scan a card or tag", icon:"card", category:"Everyday tasks",
+        kind:"builtin", view:"cards", hw_status:cardStatus,
+        short:"NFC tags, key fobs & magstripe cards",
+        desc:"Choose the kind of card or tag you have, then read, save, or copy it.",
+      });
+    if (byId.ir) tasks.push({ ...byId.ir, name:"Use a remote", short:"Control a TV or air conditioner" });
+    if (byId.bluetooth) tasks.push({ ...byId.bluetooth, name:"Connect Bluetooth", short:"Pair headphones, speakers & controllers" });
+    host.appendChild(el(`<div class="simple-head"><h2>What do you want to do?</h2>
+      <button class="exit">Expert tools</button></div>`).firstChild);
+    if (tasks.length){
       const grid = el(`<div class="simple-grid"></div>`).firstChild;
-      for (const t of simple) grid.appendChild(tile(t));
+      for (const task of tasks) grid.appendChild(tile(task));
       host.appendChild(grid);
+    } else {
+      host.appendChild(el(`<div class="empty">No everyday tasks are enabled.<br>
+        An operator can mark tools with <span class="mono">simple: true</span> in tools.yaml.</div>`).firstChild);
     }
-    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); paintSimpleBtn(); };
+    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); };
     return;
   }
 
@@ -834,35 +920,42 @@ RENDER.home = () => {
 function tile(t){
   const passive = t.kind === "builtin";
   const cls = passive ? "" : !t.available ? "off" : t.running ? "on" : "";
+  const hasInfo = Boolean(t.desc);
+  const hasOpen = t.kind === "service" && t.running && t.url;
+  const actionClass = hasOpen && hasInfo ? "has-two-actions" : hasOpen || hasInfo ? "has-actions" : "";
+  const accessibleStatus = passive ? (t.hw_status ? `Status ${t.hw_status}.` : "Open this tool.")
+    : t.running ? "Running." : t.available ? "Available." : "Unavailable.";
   const showTag = (!t.available && !passive) || t.root;
   const tagWarn = !t.available;
   const tagText = !t.available ? (t.kind === "link" ? "unreachable" : "absent") : "root";
-  const node = el(`<button class="mod ${cls}">
+  const wrap = el(`<div class="modwrap"><button class="mod ${cls} ${actionClass}" type="button"
+    aria-label="${esc(t.name)}. ${esc(glanceText(t))} ${esc(accessibleStatus)}">
     <div class="top">${ic(t.icon)}
       <span class="topr">
         ${showTag ? `<span class="tag${tagWarn ? " warn" : ""}">${tagText}</span>` : ""}
-        ${t.desc ? `<span class="info" title="What is this?">${ic("info")}</span>` : ""}
         ${t.kind === "builtin"
           ? (t.hw_status ? `<span class="led" data-s="${esc(t.hw_status)}" title="${esc(t.hw_status)}"></span>` : "")
             + `<span style="color:var(--ink-faint)">${ic("chevron")}</span>`
           : t.kind === "link" ? `<span style="color:var(--ink-faint)">${ic("external")}</span>`
           : `<span class="led" data-s="${t.running ? "WARN" : t.available ? "PASS" : "idle"}"></span>`}
-        ${t.kind === "service" && t.running && t.url
-          ? `<span class="openlink" title="Open ${esc(t.name)}">${ic("external")}</span>` : ""}
       </span>
     </div>
     <div class="nm">${esc(t.name)}</div>
     ${t.running ? `<div class="up">${esc(fmtUptime(t.uptime))}</div>`
       : `<div class="cmd" title="${esc(t.desc || "")}">${esc(glanceText(t))}</div>`}
-  </button>`).firstChild;
+  </button><span class="tile-actions">
+    ${hasInfo ? `<button class="tile-action info" type="button" aria-label="About ${esc(t.name)}">${ic("info")}</button>` : ""}
+    ${hasOpen ? `<button class="tile-action openlink" type="button" aria-label="Open ${esc(t.name)}">${ic("external")}</button>` : ""}
+  </span></div>`).firstChild;
+  const node = wrap.querySelector(".mod");
 
-  const info = node.querySelector(".info");
+  const info = wrap.querySelector(".info");
   if (info) info.onclick = (ev) => {
     ev.stopPropagation();
     showInfo(t.name, t.desc);
   };
 
-  const openlink = node.querySelector(".openlink");
+  const openlink = wrap.querySelector(".openlink");
   if (openlink) openlink.onclick = (ev) => {
     ev.stopPropagation();
     window.open(t.url, "_blank", "noopener");
@@ -877,8 +970,31 @@ function tile(t){
     if (!t.available) return toast(`${t.name} is not installed`);
     return t.running ? stopTool(t) : launchTool(t);
   };
-  return node;
+  return wrap;
 }
+
+/* Simple Home keeps technology names off the first decision. This second step
+   preserves every card workflow while limiting the choice to four clear kinds. */
+RENDER.cards = () => {
+  const host = $("#v-cards");
+  const wanted = ["nfc", "proxmark", "msr605x", "library"];
+  const plainCopy = {
+    nfc:{ name:"Tap cards & tags", short:"Hold a card or tag near the reader" },
+    proxmark:{ name:"Key fobs", short:"Read, save or copy a key fob" },
+    msr605x:{ name:"Magstripe cards", short:"Swipe, save or copy a magnetic-stripe card" },
+    library:{ name:"Saved cards", short:"Find cards and tags you've saved" },
+  };
+  const features = state.settings?.features || {};
+  const tools = wanted.map(id => state.tools.find(t => t.id === id)).filter(t => {
+    const gate = t && FEATURE_GATES[t.id];
+    return t && t.simple && (!gate || features[gate] !== false);
+  });
+  host.innerHTML = `<div class="simple-head"><h2>What are you using?</h2></div>
+    <div class="empty" style="padding:0 12px 14px">Choose the closest match. You can read first before saving or copying anything.</div>`;
+  const grid = el(`<div class="simple-grid"></div>`).firstChild;
+  for (const t of tools) grid.appendChild(tile({ ...t, ...plainCopy[t.id] }));
+  host.appendChild(grid);
+};
 
 async function launchTool(t){
   if (t.root){
@@ -1682,42 +1798,42 @@ function paintSettings(data){
     <div class="panel">
       <h3>Simple Home</h3>
       <div class="toggle" role="switch" tabindex="0" id="simpleToggle"
-           aria-pressed="${store.get("pipui_mode", "simple") === "simple"}">
+           aria-checked="${store.get("pipui_mode", "simple") === "simple"}">
         <div><div class="label">Show the simple home screen</div>
           <div style="font-size:11px;color:var(--ink-dim)">On by default for any device
-            that hasn't set this before. Just NFC / RFID, Infrared, and Bluetooth as big
-            tiles, with a quiet "More tools" link back to everything else. Only on this
-            device/browser. Which tools show up is set by
-            <span class="mono">simple: true</span> in tools.yaml.</div></div>
-        <span class="swbtn" aria-pressed="${store.get("pipui_mode", "simple") === "simple"}"></span>
+            that hasn't set this before. It offers three everyday tasks: scan a card or tag,
+            use a remote, or connect Bluetooth. "Expert tools" opens the full workbench.
+            This preference applies only to this device/browser. The operator chooses which
+            underlying tools participate with <span class="mono">simple: true</span> in tools.yaml.</div></div>
+        <span class="swbtn" aria-hidden="true" data-checked="${store.get("pipui_mode", "simple") === "simple"}"></span>
       </div>
     </div>
     <div class="panel">
       <h3>Modules</h3>
       ${FEATURE_LABELS.map(([key, label, hint]) => `
         <div class="toggle" role="switch" tabindex="0" data-feature="${key}"
-             aria-pressed="${f[key] !== false}">
+             aria-checked="${f[key] !== false}">
           <div><div class="label">${esc(label)}</div>
             <div style="font-size:11px;color:var(--ink-dim)">${esc(hint)}</div></div>
-          <span class="swbtn" aria-pressed="${f[key] !== false}"></span>
+          <span class="swbtn" aria-hidden="true" data-checked="${f[key] !== false}"></span>
         </div>`).join("")}
     </div>
     <div class="panel">
       <div class="toggle" role="switch" tabindex="0" id="logToggle" style="border-bottom:0"
-           aria-pressed="${!!data.log_enabled}">
+           aria-checked="${!!data.log_enabled}">
         <div><div class="label">Log to files</div>
           <div style="font-size:11px;color:var(--ink-dim)">data/logs/*.log, 1 MiB rotation</div></div>
-        <span class="swbtn" aria-pressed="${!!data.log_enabled}"></span>
+        <span class="swbtn" aria-hidden="true" data-checked="${!!data.log_enabled}"></span>
       </div>
     </div>`;
 
   // The whole row is the hit target; the swbtn inside is purely visual
-  // (pointer-events:none in CSS) and just mirrors the row's aria-pressed.
+  // (pointer-events:none in CSS) and just mirrors the row's aria-checked.
   const pending = { features: { ...f }, log_enabled: !!data.log_enabled };
   const flipRow = (row) => {
-    const next = row.getAttribute("aria-pressed") !== "true";
-    row.setAttribute("aria-pressed", String(next));
-    row.querySelector(".swbtn").setAttribute("aria-pressed", String(next));
+    const next = row.getAttribute("aria-checked") !== "true";
+    row.setAttribute("aria-checked", String(next));
+    row.querySelector(".swbtn").dataset.checked = String(next);
     return next;
   };
   host.querySelectorAll(".toggle[data-feature]").forEach(row => {
@@ -2244,7 +2360,7 @@ const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", 
 // straight line of big buttons instead of expecting the person to find and
 // operate the separate Scan/Clone/Verify controls themselves in the right
 // order. Those controls stay put under Advanced for manual/edge-case use.
-const pmWizard = { step: "start", found: null, error: "", target: "t55x7", result: null };
+const pmWizard = { step: "start", found: null, error: "", target: "t55x7", result: null, busy: false };
 
 // `hf search`/`lf search` output is mostly spinner-frame noise -- strip the
 // bare "[\]"/"[|]"/"[/]"/"[-]" progress lines and blank lines so the
@@ -2335,10 +2451,11 @@ function renderWizard(){
         </select>
       </div>` : ""}
       ${canWrite ? `<div class="btnrow">
-        <button class="btn pri" id="wizWrite" style="${bigBtn}">${ic("save")} Write to blank card</button>
+        <button class="btn pri" id="wizWrite" style="${bigBtn}" ${w.busy ? "disabled" : ""}>${ic("save")}
+          ${w.busy ? "Writing…" : "Write to blank card"}</button>
       </div>` : ""}
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn" id="wizCancel">Start over</button>
+        <button class="btn" id="wizCancel" ${w.busy ? "disabled" : ""}>Start over</button>
       </div>
       ${w.error ? `<div class="row" style="margin-top:8px">
         <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
@@ -2499,6 +2616,14 @@ function paintProxmark(message){
   const wizTarget = $("#wizTarget");
   if (wizTarget) wizTarget.onchange = (e) => { pmWizard.target = e.target.value; };
   async function wizDoWrite(){
+    if (pmWizard.busy) return;
+    const ok = await confirmAction({
+      title: "Write to the blank card?",
+      body: "This overwrites whatever is currently on the card on the reader. Make sure it's the blank, not the original.",
+      confirmLabel: "Write",
+    });
+    if (!ok) return;
+    pmWizard.busy = true;
     pmWizard.error = "";
     paintProxmark("Writing to the blank card…");
     try {
@@ -2509,6 +2634,7 @@ function paintProxmark(message){
     } catch (e){
       pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
       pmWizard.step = "result";
+      pmWizard.busy = false;
       pmWizard.result = { ok:false, text: `Writing failed — ${e.message}. Make sure the blank card is on the reader and try again.` };
       paintProxmark();
       return;
@@ -2529,6 +2655,7 @@ function paintProxmark(message){
       pmWizard.result = { ok:false, text: "Couldn't read the new card back — make sure it's still on the reader." };
     }
     pmWizard.step = "result";
+    pmWizard.busy = false;
     paintProxmark();
   }
   const wizWrite = $("#wizWrite");
@@ -2603,6 +2730,12 @@ function paintProxmark(message){
   $("#pmEmClone").onclick = async () => {
     const id = $("#pmEmId").value.trim().toUpperCase();
     if (!/^[0-9A-F]{10}$/.test(id)) return toast("ID must be 10 hex characters (5 bytes)");
+    const ok = await confirmAction({
+      title: "Clone to the blank fob?",
+      body: "This overwrites whatever's on the fob currently on the reader.",
+      confirmLabel: "Clone",
+    });
+    if (!ok) return;
     paintProxmark(`Cloning ${id} to ${pmState.cloneTarget}…`);
     try {
       const res = await api("/api/pm3/lf/em410x/clone", {
@@ -2638,6 +2771,12 @@ function paintProxmark(message){
   $("#pmHfClone").onclick = async () => {
     const uid = $("#pmHfCloneUid").value.trim().toUpperCase();
     if (!/^[0-9A-F]{8}([0-9A-F]{6})?$/.test(uid)) return toast("UID must be 4 or 7 hex bytes (8 or 14 hex characters)");
+    const ok = await confirmAction({
+      title: "Clone to the magic card?",
+      body: "This overwrites the UID of whatever Gen1a card is currently on the reader.",
+      confirmLabel: "Clone",
+    });
+    if (!ok) return;
     paintProxmark(`Cloning ${uid} to magic card…`);
     try {
       const res = await api("/api/pm3/hf/clone-uid", {
@@ -2696,7 +2835,7 @@ const msrState = {
   status: null, tracks: null, writeTrack1: "", writeTrack2: "", writeTrack3: "",
   rawTracks: { track1: null, track2: null, track3: null },
 };
-const msrWizard = { step: "start", found: null, error: "", note: "", result: null };
+const msrWizard = { step: "start", found: null, error: "", note: "", result: null, busy: false };
 
 // null means "read but failed to parse" (bad swipe); "" means "read fine,
 // track was genuinely blank" -- both real device answers, kept distinct
@@ -2742,11 +2881,12 @@ function renderMsrWizard(){
       ${w.note ? `<div class="row" style="margin-bottom:10px">
         <span class="v" style="color:var(--accent)">${esc(w.note)}</span></div>` : ""}
       <div class="btnrow">
-        <button class="btn pri" id="wizMsrWrite" style="${bigBtn}">${ic("save")} Write to card</button>
+        <button class="btn pri" id="wizMsrWrite" style="${bigBtn}" ${w.busy ? "disabled" : ""}>${ic("save")}
+          ${w.busy ? "Writing…" : "Write to card"}</button>
       </div>
       <div class="btnrow" style="margin-top:8px">
-        ${w.note ? `<button class="btn" id="wizMsrRetryRead">${ic("refresh")} Read the source card again</button>` : ""}
-        <button class="btn" id="wizMsrCancel">Start over</button>
+        ${w.note ? `<button class="btn" id="wizMsrRetryRead" ${w.busy ? "disabled" : ""}>${ic("refresh")} Read the source card again</button>` : ""}
+        <button class="btn" id="wizMsrCancel" ${w.busy ? "disabled" : ""}>Start over</button>
       </div>
       ${w.error ? `<div class="row" style="margin-top:8px">
         <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
@@ -2941,12 +3081,21 @@ function paintMsr(message){
   if (wizMsrRetryRead) wizMsrRetryRead.onclick = wizMsrDoRead;
 
   async function wizMsrDoWrite(){
+    if (msrWizard.busy) return;
+    const ok = await confirmAction({
+      title: "Write to this card?",
+      body: "This overwrites whatever is currently on the card in the reader. Make sure it's the blank, not the original.",
+      confirmLabel: "Write",
+    });
+    if (!ok) return;
+    msrWizard.busy = true;
     msrWizard.error = "";
     paintMsr("Writing the card…");
     try {
       await api("/api/msr/write", { method:"POST", body: JSON.stringify(msrWizard.found) });
     } catch (e){
       msrWizard.step = "result";
+      msrWizard.busy = false;
       msrWizard.result = { ok:false, text:`Writing failed — ${e.message}. Make sure the card is inserted and try again.` };
       paintMsr();
       return;
@@ -2961,6 +3110,7 @@ function paintMsr(message){
       ? { ok:true, text:"Done — the new card matches." }
       : { ok:false, text: vres?.ok ? "Didn't match — the new card reads back differently." : "Couldn't read the new card back — make sure it's still in the reader." };
     msrWizard.step = "result";
+    msrWizard.busy = false;
     paintMsr();
   }
   const wizMsrWrite = $("#wizMsrWrite");
@@ -3016,6 +3166,12 @@ function paintMsr(message){
     const track2 = $("#msrWriteT2").value.trim();
     const track3 = $("#msrWriteT3").value.trim();
     if (!track1 && !track2 && !track3) return toast("Fill in at least one track");
+    const ok = await confirmAction({
+      title: "Write these tracks?",
+      body: "This overwrites the filled-in tracks on whatever card is currently in the reader.",
+      confirmLabel: "Write",
+    });
+    if (!ok) return;
     paintMsr("Writing the card…");
     try {
       const res = await api("/api/msr/write", {
@@ -3135,18 +3291,48 @@ RENDER.themes = () => {
    =========================================================================== */
 const HEADER_CHANNELS = [["pn532","PN532"],["sdr","SDR"],["proxmark","PM3"],["msr605x","MSR"],["bluetooth","BT"],["wifi","WIFI"]];
 
+function paintConnection(){
+  const banner = $("#connectionBanner");
+  if (state.connection === "online" || state.connection === "starting"){
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+  const offline = state.connection === "offline";
+  const last = state.lastDataAt ? ago(new Date(state.lastDataAt).toISOString()) : "never";
+  banner.hidden = false;
+  banner.innerHTML = `${ic("alert")}<div><b>${offline ? "Dashboard disconnected" : "Dashboard data may be out of date"}.</b><br>
+    Last successful update: ${esc(last)}. ${esc(state.connectionError || "The dashboard could not refresh its data.")}</div>
+    <button class="btn" id="connectionRetry" type="button">Try again</button>`;
+  $("#connectionRetry").onclick = async e => {
+    e.currentTarget.disabled = true;
+    e.currentTarget.textContent = "Trying…";
+    await poll(true);
+  };
+}
+
 function paintPresence(){
   const chans = state.health?.channels || [];
+  const fresh = state.connection === "online";
   $("#presence").innerHTML = HEADER_CHANNELS.map(([name, label]) => {
     const c = chans.find(x => x.name === name);
-    const status = c ? c.status : "idle";
-    return `<span class="pchip" data-on="${c && c.ok ? 1 : 0}" title="${esc(c?.detail || "")}">
+    const status = fresh ? (c ? c.status : "idle") : "UNKNOWN";
+    const detail = fresh ? (c?.detail || "") : "Status is stale — waiting for the dashboard to reconnect";
+    return `<span class="pchip" data-on="${fresh && c && c.ok ? 1 : 0}" title="${esc(detail)}"
+      aria-label="${esc(label)}: ${esc(status)}. ${esc(detail)}">
       <i class="led" data-s="${esc(status)}"></i>${label}</span>`;
   }).join("");
 
   const overall = state.health?.status;
-  $("#pwr").style.background =
-    overall === "FAIL" ? "var(--red)" : overall === "WARN" ? "var(--accent)" : "var(--green)";
+  const pwrState = state.connection !== "online" ? state.connection
+    : overall === "FAIL" ? "fail" : overall === "WARN" ? "warn" : "online";
+  const pwrLabel = state.connection === "offline" ? "Dashboard disconnected"
+    : state.connection === "stale" ? "Dashboard data is stale"
+    : overall === "FAIL" ? "Dashboard connected; one or more hardware checks failed"
+    : overall === "WARN" ? "Dashboard connected; one or more checks need attention"
+    : "Dashboard connected and responding";
+  $("#pwr").dataset.s = pwrState;
+  $("#pwr").setAttribute("aria-label", pwrLabel);
   $("#lcdCount").textContent = state.tools.filter(t => t.running).length;
 }
 
@@ -3173,24 +3359,32 @@ clock();
 setInterval(clock, 20000);
 
 let failures = 0;
-async function poll(){
-  if (document.visibilityState !== "visible") return;
+async function poll(force = false){
+  if (!force && document.visibilityState !== "visible") return;
   try {
     const [health, tools, settings] = await Promise.all(
-      [api("/api/health"), api("/api/tools"), api("/api/settings")]
+      [api("/api/health", { timeoutMs:8000 }), api("/api/tools", { timeoutMs:8000 }), api("/api/settings", { timeoutMs:8000 })]
     );
     state.health = health;
     state.tools = tools.tools || [];
     state.toolsErr = tools.error || "";
     state.settings = settings;
     failures = 0;
+    state.connection = "online";
+    state.connectionError = "";
+    state.lastDataAt = Date.now();
     paintPresence();
+    paintConnection();
     paintSpec();
     // Feature flags can flip from the Tkinter side too, so Home re-filters on
     // every poll, not just after a save made from this page.
     if (state.view === "home") RENDER.home();
-  } catch {
+  } catch (e) {
     failures++;
+    state.connection = failures >= 3 ? "offline" : "stale";
+    state.connectionError = e?.message || "The dashboard could not refresh its data.";
+    paintPresence();
+    paintConnection();
   }
 }
 
@@ -3199,27 +3393,44 @@ async function poll(){
    =========================================================================== */
 async function boot(){
   const list = $("#bootlist");
+  const bootErrors = [];
   try {
-    const health = await api("/api/health");
+    const health = await api("/api/health", { timeoutMs:8000 });
     state.health = health;
+    state.connection = "online";
+    state.connectionError = "";
+    state.lastDataAt = Date.now();
     list.innerHTML = health.channels.map(c => `<div class="row">
       <span class="led" data-s="${esc(c.status)}"></span>
       <span class="k">${esc(c.label)}</span>
       <span class="v">${esc(c.status)}</span></div>`).join("");
   } catch (e){
+    state.connection = "offline";
+    state.connectionError = e?.message || "The dashboard backend did not respond.";
+    bootErrors.push(`Health: ${state.connectionError}`);
     list.innerHTML = `<div class="row"><span class="led" data-s="FAIL"></span>
       <span class="k">Backend unreachable</span><span class="v">FAIL</span></div>`;
   }
 
   try {
-    const tools = await api("/api/tools");
+    const tools = await api("/api/tools", { timeoutMs:8000 });
     state.tools = tools.tools || [];
     state.toolsErr = tools.error || "";
-  } catch {}
+  } catch (e) {
+    state.toolsErr = e?.message || "Tool list unavailable";
+    bootErrors.push(`Tools: ${state.toolsErr}`);
+  }
 
-  try { state.settings = await api("/api/settings"); } catch {}
+  try { state.settings = await api("/api/settings", { timeoutMs:8000 }); }
+  catch (e) { bootErrors.push(`Settings: ${e?.message || "unavailable"}`); }
+
+  if (state.connection === "online" && bootErrors.length){
+    state.connection = "stale";
+    state.connectionError = bootErrors.join(" ");
+  }
 
   paintPresence();
+  paintConnection();
   paintSpec();
   go(routeFromHash(), false);
 
