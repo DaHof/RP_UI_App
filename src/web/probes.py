@@ -219,6 +219,22 @@ def _probe_ir() -> tuple[str, str]:
     return WARN, f"IR tooling present but lircd is {state}"
 
 
+def _probe_bluetooth() -> tuple[str, str]:
+    if not shell.which("bluetoothctl"):
+        return FAIL, "bluetoothctl not installed"
+    result = shell.run(["bluetoothctl", "show"], timeout=4.0)
+    if result.unsupported or result.missing:
+        return FAIL, result.detail
+    if "Controller" not in result.stdout:
+        return FAIL, "No Bluetooth controller found"
+    powered = re.search(r"^\s*Powered:\s*(yes|no)", result.stdout, re.MULTILINE)
+    if not powered or powered.group(1) != "yes":
+        return WARN, "Bluetooth adapter present but powered off"
+    paired = shell.run(["bluetoothctl", "paired-devices"], timeout=4.0)
+    count = len([line for line in paired.stdout.splitlines() if line.startswith("Device")]) if paired.ok else 0
+    return PASS, f"Powered on -- {count} paired device(s)" if count else "Powered on"
+
+
 def _probe_wifi() -> tuple[str, str]:
     result = shell.run(["iw", "list"], timeout=4.0)
     if result.unsupported or result.missing:
@@ -294,6 +310,7 @@ PROBES: tuple[Probe, ...] = (
     Probe("msr605x", "MSR605X", _probe_msr605x, FAST),
     Probe("sdr", "RTL-SDR", _probe_sdr, SLOW),
     Probe("proxmark", "Proxmark3", _probe_proxmark, SLOW),
+    Probe("bluetooth", "Bluetooth", _probe_bluetooth, SLOW),
     Probe("wifi", "Wi-Fi monitor", _probe_wifi, SLOW),
     Probe("wifiscan", "Wi-Fi scanner", _probe_wifiscan, FAST),
     Probe("lanscan", "LAN devices", _probe_lanscan, FAST),

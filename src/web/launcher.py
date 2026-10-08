@@ -55,7 +55,10 @@ import sim
 # until you open the screen hides a FAIL a user would want to see up front.
 # Not every builtin has a probe (Bluetooth, Diagnostics, GPIO Pins, Settings
 # don't), so this stays a lookup, not a blanket rule.
-BUILTIN_HEALTH_CHANNEL = {"nfc": "pn532", "proxmark": "proxmark", "mmwave": "mmwave", "ir": "ir"}
+BUILTIN_HEALTH_CHANNEL = {
+    "nfc": "pn532", "proxmark": "proxmark", "mmwave": "mmwave", "ir": "ir",
+    "msr605x": "msr605x", "bluetooth": "bluetooth",
+}
 
 # How long a link tile's reachability result is trusted before re-probing, and
 # how long the probe itself is allowed to block -- short, since /api/tools is
