@@ -481,6 +481,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
     <button class="iconbtn" id="helpBtn" aria-label="What do the lights mean?"><svg class="ic"><use href="#i-info"/></svg></button>
     <button class="iconbtn" id="fsBtn" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Themes"><svg class="ic"><use href="#i-palette"/></svg></button>
+    <button class="iconbtn" id="simpleBtn" aria-label="Simple Home"><svg class="ic"><use href="#i-home"/></svg></button>
   </header>
 
   <main>
@@ -707,6 +708,7 @@ function go(view, push = true){
   for (const v of Object.keys(TITLES)) $(`#v-${v}`)?.classList.toggle("on", v === view);
   $("#title").textContent = TITLES[view] || "PIP-UI";
   $("#back").hidden = view === "home";
+  paintSimpleBtn();
   $("main").scrollTop = 0;
   // Hash routing so a view survives a reload -- a kiosk that reboots into the
   // diagnostics screen should come back to it.
@@ -727,6 +729,14 @@ addEventListener("hashchange", () => go(routeFromHash(), false));
 $("#back").onclick = () => go("home");
 $("#themeBtn").onclick = () => go(state.view === "themes" ? "home" : "themes");
 $("#helpBtn").onclick = showLegend;
+
+/* Jump straight to Simple Home from anywhere -- hidden only when it would be
+   a no-op (already looking at it). Also called after any direct RENDER.home()
+   call that bypasses go(), e.g. the "More tools" exit link. */
+function paintSimpleBtn(){
+  $("#simpleBtn").hidden = state.view === "home" && store.get("pipui_mode", "simple") === "simple";
+}
+$("#simpleBtn").onclick = () => { store.set("pipui_mode", "simple"); go("home"); };
 
 /* ---- fullscreen / kiosk -------------------------------------------------
    Chromium --kiosk is the real answer on the Pi (see scripts/kiosk.sh); this
@@ -801,7 +811,7 @@ RENDER.home = () => {
       for (const t of simple) grid.appendChild(tile(t));
       host.appendChild(grid);
     }
-    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); };
+    host.querySelector(".exit").onclick = () => { store.set("pipui_mode", "full"); RENDER.home(); paintSimpleBtn(); };
     return;
   }
 

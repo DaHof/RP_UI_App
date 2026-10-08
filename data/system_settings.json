@@ -1,5 +1,5 @@
 {
-  "Scan": false,
+  "Scan": true,
   "IR": true,
   "Bluetooth": true,
   "WiFi": false,
