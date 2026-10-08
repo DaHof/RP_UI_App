@@ -3294,6 +3294,12 @@ function paintMsr(message){
   $("#msrWriteRaw").onclick = async () => {
     const t = msrState.rawTracks;
     if (!t.track1 && !t.track2 && !t.track3) return toast("Read a card (raw) first -- nothing captured yet");
+    const ok = await confirmAction({
+      title: "Write these raw bytes to the card?",
+      body: "This overwrites whatever is currently on the card in the reader with the captured bytes. Make sure it's the blank, not the original.",
+      confirmLabel: "Write",
+    });
+    if (!ok) return;
     paintMsr("Writing raw bytes to card…");
     try {
       const res = await api("/api/msr/write-raw", { method:"POST", body: JSON.stringify(t) });
