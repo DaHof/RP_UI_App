@@ -528,6 +528,11 @@ async def pm3_status():
     return await run_in_threadpool(pmweb.device_info)
 
 
+@app.post("/api/pm3/scan")
+async def pm3_scan():
+    return await run_in_threadpool(pmweb.scan)
+
+
 @app.post("/api/pm3/read/lf")
 async def pm3_read_lf():
     ok, message, raw = await run_in_threadpool(pmweb.read_lf)
@@ -538,10 +543,10 @@ async def pm3_read_lf():
 
 @app.post("/api/pm3/read/hf")
 async def pm3_read_hf():
-    ok, message, raw = await run_in_threadpool(pmweb.read_hf)
+    ok, message, raw, uid, tag_type = await run_in_threadpool(pmweb.read_hf)
     if not ok:
         return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
-    return {"ok": True, "message": message, "raw": raw}
+    return {"ok": True, "message": message, "raw": raw, "uid": uid, "tag_type": tag_type}
 
 
 @app.post("/api/pm3/lf/em410x/read")
@@ -560,6 +565,18 @@ class CloneEm410xRequest(BaseModel):
 @app.post("/api/pm3/lf/em410x/clone")
 async def pm3_clone_em410x(request: CloneEm410xRequest):
     ok, message, raw = await run_in_threadpool(pmweb.clone_em410x, request.id, request.target)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
+    return {"ok": True, "message": message, "raw": raw}
+
+
+class CloneHfUidRequest(BaseModel):
+    uid: str
+
+
+@app.post("/api/pm3/hf/clone-uid")
+async def pm3_clone_hf_uid(request: CloneHfUidRequest):
+    ok, message, raw = await run_in_threadpool(pmweb.clone_mifare_uid, request.uid)
     if not ok:
         return JSONResponse({"ok": False, "message": message, "raw": raw}, status_code=400)
     return {"ok": True, "message": message, "raw": raw}

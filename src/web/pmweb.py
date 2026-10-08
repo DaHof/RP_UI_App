@@ -37,6 +37,19 @@ EM410X_TARGETS = {
     "em4305": "--em",
 }
 
+# `hf search`'s ISO14443-A block looks like:
+#   [+]  UID: FD 20 66 FC   ( ONUID, re-used )
+#   [+] ATQA: 00 04
+#   [+]  SAK: 08 [2]
+#   [+] Possible types:
+#   [+]    MIFARE Classic 1K
+# As with EM410X_ID_RE, this project has no HF card dump captured from every
+# tag family (ISO15693, FeliCa, iCLASS, ...) to confirm against, so only the
+# ISO14443-A case -- the one actually exercised against real hardware -- is
+# parsed; anything else falls back to the raw text with no UID/tag_type.
+HF_UID_RE = re.compile(r"UID:\s*([0-9A-Fa-f]{2}(?:\s[0-9A-Fa-f]{2})*)")
+HF_TYPE_RE = re.compile(r"Possible types:\s*\n\[\+\]\s*(.+)")
+
 
 def _manufacturer(tty_name: str) -> str:
     # Same relative path the `pm3` launcher script itself greps:
@@ -81,8 +94,47 @@ def read_lf() -> tuple[bool, str, str]:
     return _search("lf search")
 
 
-def read_hf() -> tuple[bool, str, str]:
-    return _search("hf search")
+def _parse_hf(raw: str) -> tuple[str | None, str | None]:
+    uid_match = HF_UID_RE.search(raw)
+    if not uid_match:
+        return None, None
+    uid = uid_match.group(1).replace(" ", "").upper()
+    type_match = HF_TYPE_RE.search(raw)
+    tag_type = type_match.group(1).strip() if type_match else "ISO14443-A"
+    return uid, tag_type
+
+
+def read_hf() -> tuple[bool, str, str, str | None, str | None]:
+    """Runs `hf search` and, for the ISO14443-A case, also pulls out a UID
+    and possible tag type so the UI can offer a Save-to-library button --
+    other HF families (ISO15693, FeliCa, iCLASS, ...) still show their raw
+    text but with no parsed UID. Returns (ok, message, raw, uid, tag_type)."""
+    ok, message, raw = _search("hf search")
+    uid, tag_type = _parse_hf(raw)
+    return ok, message, raw, uid, tag_type
+
+
+def scan() -> dict:
+    """One combined LF+HF pass for the Simple-mode "Scan card" button --
+    tries HF first (the far more common case: Mifare/NTAG/etc.), then falls
+    back to LF, so the person doesn't have to know which frequency their
+    card uses before pressing anything."""
+    port = find_port()
+    if not port:
+        return {"found": "disconnected", "uid": None, "tag_type": None, "raw": ""}
+
+    _, _, hf_raw = _search("hf search")
+    uid, tag_type = _parse_hf(hf_raw)
+    if uid:
+        return {"found": "hf", "uid": uid, "tag_type": tag_type, "raw": hf_raw}
+
+    _, _, lf_raw = _search("lf search")
+    em_match = EM410X_ID_RE.search(lf_raw)
+    combined_raw = hf_raw + "\n\n" + lf_raw
+    if em_match:
+        return {"found": "lf", "uid": em_match.group(1).upper(), "tag_type": "EM410x", "raw": combined_raw}
+
+    return {"found": "none", "uid": None, "tag_type": None, "raw": combined_raw}
 
 
 def read_em410x() -> tuple[bool, str, str, str | None]:
@@ -101,6 +153,24 @@ def read_em410x() -> tuple[bool, str, str, str | None]:
     if not result.ok:
         return False, result.detail, result.stdout, None
     return False, "No EM410x tag found", result.stdout, None
+
+
+def clone_mifare_uid(uid_hex: str) -> tuple[bool, str, str]:
+    """Writes a new UID onto a Gen1a magic MIFARE Classic card via the
+    client's own `hf mf csetuid` -- a documented backdoor command, unlike the
+    hand-rolled unlock-byte sequence the PN532 path uses, so this one is a
+    real client feature rather than a best-effort guess."""
+    port = find_port()
+    if not port:
+        return False, "No Proxmark3 detected", ""
+    clean = uid_hex.replace(":", "").replace(" ", "")
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}|[0-9A-Fa-f]{14}", clean):
+        return False, "UID must be 4 or 7 hex bytes (8 or 14 hex characters)", ""
+
+    result = shell.run(["proxmark3", "-p", port, "-c", f"hf mf csetuid -u {clean}"], timeout=CLONE_TIMEOUT)
+    if not result.ok:
+        return False, result.detail, result.stdout
+    return True, f"Wrote UID {clean.upper()} to magic card", result.stdout
 
 
 def clone_em410x(tag_id: str, target: str = "t55x7") -> tuple[bool, str, str]:

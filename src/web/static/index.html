@@ -1101,20 +1101,25 @@ RENDER.library = async () => {
     };
   });
 
-  // LF (Proxmark3/EM410x) entries clone via the Proxmark3 tile's own clone
-  // command; everything else is treated as an HF/PN532 tag and clones via
-  // UID-to-magic-card on the NFC tile. There's no "replay a saved dump"
-  // write path yet -- this only ever pushes the UID.
+  // LF and HF entries saved from the Proxmark3 tile (category "LF"/"HF")
+  // clone via that same tile's own commands; everything else was saved from
+  // the PN532/NFC tile and clones via UID-to-magic-card there instead.
+  // There's no "replay a saved dump" write path yet -- this only ever
+  // pushes the UID.
   host.querySelectorAll("[data-clone]").forEach(btn => {
     btn.onclick = () => {
       const id = btn.getAttribute("data-clone");
       const profile = data.profiles.find(p => p.id === id);
       if (!profile) return;
+      const uid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
       if (profile.category === "LF") {
-        pmState.emId = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        pmState.emId = uid;
+        go("proxmark");
+      } else if (profile.category === "HF") {
+        pmState.hfCloneUid = uid;
         go("proxmark");
       } else {
-        nfcState.cloneUid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+        nfcState.cloneUid = uid;
         go("nfc");
       }
     };
@@ -2197,17 +2202,148 @@ async function btPower(on){
    HF clone, Sniff, and Script are still stubs in the Tkinter screen too (see
    src/ui/app.py's ProxmarkScreen) -- this wires up Connection, Read, and the
    one LF clone path the pm3 client actually supports as a single command. */
-const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7" };
+const pmState = { status: null, lastOutput: "", emId: "", cloneTarget: "t55x7", hfUid: "", hfTagType: "", hfCloneUid: "", scanFound: null, hfVerify: null, lfVerify: null };
+
+// Guided "Clone a card" flow -- read, swap, write, auto-verify -- as a
+// straight line of big buttons instead of expecting the person to find and
+// operate the separate Scan/Clone/Verify controls themselves in the right
+// order. Those controls stay put under Advanced for manual/edge-case use.
+const pmWizard = { step: "start", found: null, error: "", target: "t55x7", result: null };
+
+// `hf search`/`lf search` output is mostly spinner-frame noise -- strip the
+// bare "[\]"/"[|]"/"[/]"/"[-]" progress lines and blank lines so the
+// collapsed raw-output panel is actually readable instead of a wall of
+// redraws.
+function pmCleanRaw(raw){
+  return (raw || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line && !/^\[[\\|/-]\]$/.test(line))
+    .join("\n");
+}
+
+// What blank/magic card a given HF type can actually be cloned onto. Unlike
+// LF (T55x7/Q5/EM4305 are all write-anything transponders), HF clone targets
+// only exist because some manufacturers sell tags with a backdoor command
+// that makes an otherwise-fixed UID rewritable -- there's no generic "blank"
+// for ISO14443-A/B/15693 the way there is for 125kHz.
+function pmCloneHint(tagType){
+  const t = (tagType || "").toLowerCase();
+  if (t.includes("mifare classic"))
+    return "Clone target: Gen1a or Gen2 (\"CUID\") magic MIFARE Classic card -- a stock card's UID is fixed.";
+  if (t.includes("ultralight") || t.includes("ntag"))
+    return "Clone target: UID-changeable \"magic\" NTAG213/215/216 -- most NTAG blanks ship with a fixed factory UID.";
+  if (t.includes("desfire"))
+    return "DESFire UID generally can't be cloned -- it uses per-card crypto keys, not just a UID check.";
+  if (t.includes("iclass") || t.includes("picopass"))
+    return "Clone target: iCLASS-compatible magic/CSN-changeable card. Standard iCLASS has a fixed CSN.";
+  return "No known magic/UID-changeable blank confirmed for this tag type -- check the raw output above for the exact family before buying a blank.";
+}
+
+// Plain-language version of the same facts for the main result panel --
+// pmCloneHint()'s Gen1a/Gen2/CUID wording is accurate but not something a
+// non-technical person should have to parse before they can save a card.
+function pmCloneHintSimple(tagType){
+  const t = (tagType || "").toLowerCase();
+  if (t.includes("mifare classic"))
+    return "This can be cloned onto a magic card — see \"Clone to a magic card\" below.";
+  if (t.includes("ultralight") || t.includes("ntag") || t.includes("iclass") || t.includes("picopass"))
+    return "This can be cloned, but only onto a special \"magic\" blank card.";
+  if (t.includes("desfire"))
+    return "This card can't be cloned -- it uses extra security beyond just an ID.";
+  return "Not sure yet whether this can be cloned -- see Raw output below for the exact card type.";
+}
 
 RENDER.proxmark = async () => {
   try { pmState.status = await api("/api/pm3/status"); } catch { pmState.status = null; }
   paintProxmark();
 };
 
+// What to actually buy/use, by the HF tag type the wizard just read -- not
+// every HF family uses the same magic blank, and DESFire can't be cloned
+// onto any blank at all (per-card crypto keys, not just a UID check).
+function pmBlankNeededHf(tagType){
+  const t = (tagType || "").toLowerCase();
+  if (t.includes("mifare classic"))
+    return { buy: "A Gen1a \"magic\" MIFARE Classic card — often sold as a \"UID card\" or \"UID changeable card.\"", clonable: true };
+  if (t.includes("ultralight") || t.includes("ntag"))
+    return { buy: "A magic/UID-changeable NTAG213/215/216 tag — a different blank than MIFARE, so check the listing before buying.", clonable: true };
+  if (t.includes("desfire"))
+    return { buy: "This card can't be cloned this way — DESFire uses per-card security keys, not just a UID check.", clonable: false };
+  if (t.includes("iclass") || t.includes("picopass"))
+    return { buy: "An iCLASS-compatible magic/CSN-changeable card — a standard iCLASS card can't be rewritten.", clonable: true };
+  return { buy: "Not sure what blank this needs — the exact card type above isn't one this app recognizes for cloning.", clonable: false };
+}
+
+function renderWizard(){
+  const w = pmWizard;
+  const bigBtn = "min-height:52px;font-size:16px;width:100%";
+  if (w.step === "swap" && w.found){
+    const hfBlank = w.found.kind === "hf" ? pmBlankNeededHf(w.found.tagType) : null;
+    const needs = w.found.kind === "hf"
+      ? hfBlank.buy
+      : "You need a blank T5577, Q5/T5555, or EM4305/4469 fob.";
+    const canWrite = w.found.kind !== "hf" || hfBlank.clonable;
+    return `<div class="panel">
+      <h3>Clone a card — step 2 of 3</h3>
+      <div class="row"><span class="k">Found</span>
+        <span class="v">${esc(w.found.tagType)} (${esc(w.found.uid)})</span></div>
+      <div class="d" style="margin:10px 0"><b>What you need:</b> ${esc(needs)}</div>
+      ${canWrite ? `<div class="d" style="margin-bottom:10px">Remove the original, and put that blank
+        on the reader instead.</div>` : ""}
+      ${w.found.kind === "lf" ? `<div class="btnrow" style="margin-bottom:10px">
+        <select id="wizTarget" style="flex:1;min-height:44px">
+          <option value="t55x7" ${w.target === "t55x7" ? "selected" : ""}>Blank is a T5577</option>
+          <option value="q5" ${w.target === "q5" ? "selected" : ""}>Blank is a Q5/T5555</option>
+          <option value="em4305" ${w.target === "em4305" ? "selected" : ""}>Blank is an EM4305/4469</option>
+        </select>
+      </div>` : ""}
+      ${canWrite ? `<div class="btnrow">
+        <button class="btn pri" id="wizWrite" style="${bigBtn}">${ic("save")} Write to blank card</button>
+      </div>` : ""}
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="wizCancel">Start over</button>
+      </div>
+      ${w.error ? `<div class="row" style="margin-top:8px">
+        <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+    </div>`;
+  }
+  if (w.step === "result" && w.result){
+    return `<div class="panel">
+      <h3>Clone a card — done</h3>
+      <div class="row" style="margin:8px 0">
+        <span class="v" style="font-size:16px;color:var(${w.result.ok ? "--green" : "--red"})">
+          ${w.result.ok ? "✓" : "⚠"} ${esc(w.result.text)}</span>
+      </div>
+      <div class="btnrow">
+        ${!w.result.ok ? `<button class="btn pri" id="wizRetryWrite" style="${bigBtn}">
+          ${ic("refresh")} Try writing again</button>` : ""}
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn ${w.result.ok ? "pri" : ""}" id="wizCancel" style="${bigBtn}">
+          ${ic("antenna")} Clone another card</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <h3>Clone a card — step 1 of 3</h3>
+    <div class="d" style="margin-bottom:10px">Put the card you want to copy flat on the reader.</div>
+    <div class="btnrow">
+      <button class="btn pri" id="wizRead" style="${bigBtn}">${ic("antenna")} Read card</button>
+    </div>
+    ${w.error ? `<div class="row" style="margin-top:8px">
+      <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+  </div>`;
+}
+
 function paintProxmark(message){
   const s = pmState.status;
   $("#v-proxmark").innerHTML = `
     ${message ? `<div class="banner">${ic("alert")}<div>${esc(message)}</div></div>` : ""}
+    ${renderWizard()}
+    <details class="panel" ${pmState.scanFound || pmState.hfVerify || pmState.lfVerify ? "open" : ""}>
+    <summary style="cursor:pointer"><h3 style="display:inline">Advanced / manual tools</h3></summary>
+    <div style="margin-top:10px">
     <div class="panel">
       <div class="row"><span class="k">Device</span>
         <span class="v">${s?.connected ? "Connected" : "Not connected"}</span></div>
@@ -2215,16 +2351,48 @@ function paintProxmark(message){
       ${!s?.connected ? `<div class="srow"><span class="k">Note</span>
         <span class="d">${esc(s?.detail || "No Proxmark3 detected")}</span></div>` : ""}
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn pri" id="pmRefresh">${ic("refresh")} Device info</button>
-        <button class="btn" id="pmLF">LF search</button>
-        <button class="btn" id="pmHF">HF search</button>
+        <button class="btn pri" id="pmScan">${ic("antenna")} Scan card</button>
+        <button class="btn" id="pmRefresh">${ic("refresh")} Device info</button>
+        <button class="btn" id="pmLibBtn">${ic("card")} Library</button>
       </div>
     </div>
-    <div class="panel">
-      <h3>EM410x clone (125kHz)</h3>
-      <div class="d" style="margin-bottom:8px">Read a source EM410x tag to get its ID, swap in
-        a blank T55x7/Q5/EM4305 tag, then clone. Other LF tag types (HID, Hitag, ...) aren't
-        wired up here.</div>
+    <div class="panel" id="pmResultPanel">
+      ${pmState.scanFound === "hf" ? `
+        <h3>Card found</h3>
+        <div class="row"><span class="k">ID</span><span class="v mono">${esc(pmState.hfUid)}</span></div>
+        <div class="row"><span class="k">Type</span><span class="v">${esc(pmState.hfTagType)}</span></div>
+        <div class="row"><span class="k">Cloning</span>
+          <span class="d">${esc(pmCloneHintSimple(pmState.hfTagType))}</span></div>
+        <div class="btnrow" style="margin-top:8px">
+          <input type="text" id="pmHfSaveName" placeholder="Name, e.g. Office Badge"
+                 style="flex:1;min-width:150px">
+          <button class="btn pri" id="pmHfSave">${ic("card")} Save to library</button>
+        </div>`
+      : pmState.scanFound === "lf" ? `
+        <h3>Card found</h3>
+        <div class="row"><span class="k">ID</span><span class="v mono">${esc(pmState.emId)}</span></div>
+        <div class="row"><span class="k">Type</span><span class="v">Key fob (EM410x)</span></div>
+        <div class="row"><span class="k">Cloning</span>
+          <span class="d">This can be cloned onto a blank fob — see "Clone to a blank fob" below.</span></div>
+        <div class="btnrow" style="margin-top:8px">
+          <input type="text" id="pmLfSaveName" placeholder="Name, e.g. Gate Fob"
+                 style="flex:1;min-width:150px">
+          <button class="btn pri" id="pmLfSave">${ic("card")} Save to library</button>
+        </div>`
+      : pmState.scanFound === "none" ? `
+        <h3>No card found</h3>
+        <div class="d">Hold the card flat against the antenna (not just nearby) and scan again.</div>`
+      : pmState.scanFound === "disconnected" ? `
+        <h3>No Proxmark3 detected</h3>
+        <div class="d">Check the USB connection, then press Device info to recheck.</div>`
+      : `<div class="empty">Press Scan card to read whatever's on the antenna.</div>`}
+    </div>
+    <details class="panel" ${pmState.scanFound === "lf" ? "open" : ""}>
+      <summary style="cursor:pointer"><h3 style="display:inline">Clone to a blank fob (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0"><b>1.</b> Scan the source fob above to fill in its ID.
+        <b>2.</b> Lift it off the antenna and put a <b>blank</b> T5577, Q5/T5555, or EM4305/4469
+        fob there instead — check what you bought if you're not sure which. <b>3.</b> Press Clone
+        to tag. Other LF tag types (HID, Hitag, ...) aren't wired up here.</div>
       <div class="btnrow">
         <button class="btn" id="pmEmRead">${ic("refresh")} Read EM410x ID</button>
       </div>
@@ -2232,40 +2400,153 @@ function paintProxmark(message){
         <input type="text" id="pmEmId" placeholder="10-hex-char ID, e.g. 0F0368568B"
                value="${esc(pmState.emId)}" style="flex:1;min-width:150px" maxlength="10">
         <select id="pmEmTarget">
-          <option value="t55x7" ${pmState.cloneTarget === "t55x7" ? "selected" : ""}>T55x7</option>
+          <option value="t55x7" ${pmState.cloneTarget === "t55x7" ? "selected" : ""}>T5577</option>
           <option value="q5" ${pmState.cloneTarget === "q5" ? "selected" : ""}>Q5/T5555</option>
           <option value="em4305" ${pmState.cloneTarget === "em4305" ? "selected" : ""}>EM4305/4469</option>
         </select>
         <button class="btn pri" id="pmEmClone">${ic("save")} Clone to tag</button>
       </div>
-      ${pmState.emId ? `<div class="btnrow" style="margin-top:8px">
-        <input type="text" id="pmEmSaveName" placeholder="Name, e.g. Gate Fob"
-               style="flex:1;min-width:150px">
-        <button class="btn" id="pmEmSave">${ic("card")} Save to library</button>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="pmEmVerify">${ic("antenna")} Verify (re-read the fob now on the antenna)</button>
+      </div>
+      ${pmState.lfVerify ? `<div class="row" style="margin-top:6px">
+        <span class="k">Result</span><span class="v" style="color:var(${pmState.lfVerify.ok ? "--green" : "--red"})">${esc(pmState.lfVerify.text)}</span>
       </div>` : ""}
+    </details>
+    <details class="panel" ${pmState.scanFound === "hf" ? "open" : ""}>
+      <summary style="cursor:pointer"><h3 style="display:inline">Clone to a magic card (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0"><b>1.</b> Scan the source card above to fill in its UID.
+        <b>2.</b> Lift it off the antenna and put a <b>Gen1a "magic"</b> MIFARE Classic card there
+        instead — an ordinary card's UID can't be rewritten. <b>3.</b> Press Clone to tag.</div>
+      <div class="btnrow">
+        <input type="text" id="pmHfCloneUid" placeholder="4 or 7-byte hex UID, e.g. 04A1B2C3"
+               value="${esc(pmState.hfCloneUid)}" style="flex:1;min-width:150px" maxlength="14">
+        <button class="btn pri" id="pmHfClone">${ic("save")} Clone to tag</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="pmHfVerify">${ic("antenna")} Verify (re-scan the card now on the antenna)</button>
+      </div>
+      ${pmState.hfVerify ? `<div class="row" style="margin-top:6px">
+        <span class="k">Result</span><span class="v" style="color:var(${pmState.hfVerify.ok ? "--green" : "--red"})">${esc(pmState.hfVerify.text)}</span>
+      </div>` : ""}
+    </details>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Raw output (advanced)</h3></summary>
+      <pre class="mono" style="white-space:pre-wrap;margin:8px 0 0">${esc(pmCleanRaw(pmState.lastOutput || s?.raw) || "No output yet.")}</pre>
+    </details>
     </div>
-    <div class="panel"><h3>Output</h3>
-      <pre class="mono" style="white-space:pre-wrap;margin:0">${esc(pmState.lastOutput || s?.raw || "No output yet.")}</pre>
-    </div>`;
+    </details>`;
+
+  const wizRead = $("#wizRead");
+  if (wizRead) wizRead.onclick = async () => {
+    pmWizard.error = "";
+    paintProxmark("Reading the card on the reader…");
+    try {
+      const res = await api("/api/pm3/scan", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      if (res.found === "hf" || res.found === "lf"){
+        pmWizard.found = { kind: res.found, uid: res.uid, tagType: res.found === "hf" ? res.tag_type : "EM410x key fob" };
+        pmWizard.step = "swap";
+        paintProxmark();
+      } else if (res.found === "disconnected"){
+        pmWizard.error = "No Proxmark3 detected — check the USB cable.";
+        paintProxmark();
+      } else {
+        pmWizard.error = "No card found — make sure it's flat on the reader and try again.";
+        paintProxmark();
+      }
+    } catch (e){
+      pmWizard.error = e.message;
+      paintProxmark();
+    }
+  };
+  const wizTarget = $("#wizTarget");
+  if (wizTarget) wizTarget.onchange = (e) => { pmWizard.target = e.target.value; };
+  async function wizDoWrite(){
+    pmWizard.error = "";
+    paintProxmark("Writing to the blank card…");
+    try {
+      const res = pmWizard.found.kind === "hf"
+        ? await api("/api/pm3/hf/clone-uid", { method:"POST", body: JSON.stringify({ uid: pmWizard.found.uid }) })
+        : await api("/api/pm3/lf/em410x/clone", { method:"POST", body: JSON.stringify({ id: pmWizard.found.uid, target: pmWizard.target }) });
+      pmState.lastOutput = res.raw || "";
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmWizard.step = "result";
+      pmWizard.result = { ok:false, text: `Writing failed — ${e.message}. Make sure the blank card is on the reader and try again.` };
+      paintProxmark();
+      return;
+    }
+    paintProxmark("Checking the new card matches…");
+    const expected = pmWizard.found.uid.toUpperCase();
+    try {
+      const vres = pmWizard.found.kind === "hf"
+        ? await api("/api/pm3/read/hf", { method:"POST" })
+        : await api("/api/pm3/lf/em410x/read", { method:"POST" });
+      pmState.lastOutput = vres.raw || pmState.lastOutput;
+      const got = ((pmWizard.found.kind === "hf" ? vres.uid : vres.id) || "").toUpperCase();
+      pmWizard.result = got === expected
+        ? { ok:true, text: `Done — the new card matches (${got}).` }
+        : { ok:false, text: got ? `Didn't match — new card reads as ${got}, expected ${expected}.` : "Couldn't read the new card back — make sure it's still on the reader." };
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmWizard.result = { ok:false, text: "Couldn't read the new card back — make sure it's still on the reader." };
+    }
+    pmWizard.step = "result";
+    paintProxmark();
+  }
+  const wizWrite = $("#wizWrite");
+  if (wizWrite) wizWrite.onclick = wizDoWrite;
+  const wizRetryWrite = $("#wizRetryWrite");
+  if (wizRetryWrite) wizRetryWrite.onclick = wizDoWrite;
+  const wizCancel = $("#wizCancel");
+  if (wizCancel) wizCancel.onclick = () => {
+    pmWizard.step = "start"; pmWizard.found = null; pmWizard.error = ""; pmWizard.result = null;
+    paintProxmark();
+  };
 
   $("#pmRefresh").onclick = async () => {
     paintProxmark("Checking for a Proxmark3…");
     try { pmState.status = await api("/api/pm3/status"); paintProxmark(); }
     catch (e){ paintProxmark(e.message); }
   };
-  const search = async (path, label) => {
-    paintProxmark(`Running ${label}…`);
+  $("#pmLibBtn").onclick = () => go("library");
+  $("#pmScan").onclick = async () => {
+    paintProxmark("Scanning — trying HF then LF…");
     try {
-      const res = await api(path, { method:"POST" });
+      const res = await api("/api/pm3/scan", { method:"POST" });
       pmState.lastOutput = res.raw || "";
-      paintProxmark(res.message === "ok" ? "" : res.message);
+      pmState.scanFound = res.found;
+      pmState.hfUid = res.found === "hf" ? res.uid : "";
+      pmState.hfTagType = res.found === "hf" ? res.tag_type : "";
+      pmState.hfCloneUid = res.found === "hf" ? res.uid : pmState.hfCloneUid;
+      pmState.emId = res.found === "lf" ? res.uid : pmState.emId;
+      paintProxmark(res.found === "disconnected" ? "No Proxmark3 detected" : "");
     } catch (e){
       pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmState.scanFound = "none";
       paintProxmark(e.message);
     }
   };
-  $("#pmLF").onclick = () => search("/api/pm3/read/lf", "LF search");
-  $("#pmHF").onclick = () => search("/api/pm3/read/hf", "HF search");
+
+  const pmHfSave = $("#pmHfSave");
+  if (pmHfSave) pmHfSave.onclick = async () => {
+    const name = $("#pmHfSaveName").value.trim();
+    try {
+      const res = await api("/api/library", {
+        method:"POST",
+        body: JSON.stringify({
+          uid: pmState.hfUid,
+          tag_type: pmState.hfTagType,
+          technologies: ["ISO14443-A"],
+          category: "HF",
+          friendly_name: name || undefined,
+          notes: pmCloneHint(pmState.hfTagType),
+        }),
+      });
+      toast(`Saved as ${res.friendly_name}`);
+    } catch (e){ toast(e.message); }
+  };
 
   $("#pmEmId").oninput = (e) => { pmState.emId = e.target.value.trim().toUpperCase(); };
   $("#pmEmTarget").onchange = (e) => { pmState.cloneTarget = e.target.value; };
@@ -2298,16 +2579,68 @@ function paintProxmark(message){
       paintProxmark(e.message);
     }
   };
-  const pmSave = $("#pmEmSave");
-  if (pmSave) pmSave.onclick = async () => {
-    const id = $("#pmEmId").value.trim().toUpperCase();
-    if (!/^[0-9A-F]{10}$/.test(id)) return toast("ID must be 10 hex characters (5 bytes)");
-    const name = $("#pmEmSaveName").value.trim();
+  $("#pmEmVerify").onclick = async () => {
+    const expected = $("#pmEmId").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{10}$/.test(expected)) return toast("Fill in the ID you cloned first");
+    paintProxmark("Reading the fob on the antenna…");
+    try {
+      const res = await api("/api/pm3/lf/em410x/read", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      const got = (res.id || "").toUpperCase();
+      pmState.lfVerify = got === expected
+        ? { ok: true, text: `Matches — reads back as ${got}` }
+        : { ok: false, text: got ? `Does not match — card reads as ${got}, expected ${expected}` : "No EM410x tag read back" };
+      paintProxmark();
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      const got = (e.body?.id || "").toUpperCase();
+      pmState.lfVerify = { ok: false, text: got ? `Does not match — card reads as ${got}` : "No EM410x tag read back" };
+      paintProxmark();
+    }
+  };
+  $("#pmHfCloneUid").oninput = (e) => { pmState.hfCloneUid = e.target.value.trim().toUpperCase(); };
+  $("#pmHfClone").onclick = async () => {
+    const uid = $("#pmHfCloneUid").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{8}([0-9A-F]{6})?$/.test(uid)) return toast("UID must be 4 or 7 hex bytes (8 or 14 hex characters)");
+    paintProxmark(`Cloning ${uid} to magic card…`);
+    try {
+      const res = await api("/api/pm3/hf/clone-uid", {
+        method:"POST", body: JSON.stringify({ uid }),
+      });
+      pmState.lastOutput = res.raw || "";
+      paintProxmark(res.message);
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      paintProxmark(e.message);
+    }
+  };
+  $("#pmHfVerify").onclick = async () => {
+    const expected = $("#pmHfCloneUid").value.trim().toUpperCase();
+    if (!expected) return toast("Fill in the UID you cloned first");
+    paintProxmark("Reading the card on the antenna…");
+    try {
+      const res = await api("/api/pm3/read/hf", { method:"POST" });
+      pmState.lastOutput = res.raw || "";
+      const got = (res.uid || "").toUpperCase();
+      pmState.hfVerify = got === expected
+        ? { ok: true, text: `Matches — reads back as ${got} (${res.tag_type || "?"})` }
+        : { ok: false, text: got ? `Does not match — card reads as ${got}, expected ${expected}` : "No HF tag read back" };
+      paintProxmark();
+    } catch (e){
+      pmState.lastOutput = e.body?.raw ?? pmState.lastOutput;
+      pmState.hfVerify = { ok: false, text: "No HF tag read back" };
+      paintProxmark();
+    }
+  };
+
+  const pmLfSave = $("#pmLfSave");
+  if (pmLfSave) pmLfSave.onclick = async () => {
+    const name = $("#pmLfSaveName").value.trim();
     try {
       const res = await api("/api/library", {
         method:"POST",
         body: JSON.stringify({
-          uid: id,
+          uid: pmState.emId,
           tag_type: "EM410x",
           category: "LF",
           friendly_name: name || undefined,
