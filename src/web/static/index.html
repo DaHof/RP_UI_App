@@ -1113,31 +1113,31 @@ RENDER.nfc = async () => {
           : `<div class="empty" style="padding:12px">Nothing yet.</div>`}
       </div>
     </div>
-    <div class="panel">
-      <h3>Write NDEF text</h3>
-      <div class="btnrow">
-        <input type="text" id="nfcWriteText" placeholder="Text to write, e.g. a URL or note"
-               style="flex:1;min-width:150px">
-        <button class="btn pri" id="nfcWriteBtn">${ic("play")} Write to tag</button>
-      </div>
-      <div class="row" style="margin-top:6px"><span class="d">Hold a blank NTAG2xx tag to the
-        reader, then press Write. User memory starts at block 4.</span></div>
-    </div>
-    <div class="panel">
-      <h3>Clone UID to magic card</h3>
-      <div class="btnrow">
-        <input type="text" id="nfcCloneUid" placeholder="4-byte hex UID, e.g. 04A1B2C3"
-               value="${esc(nfcState.cloneUid)}" style="flex:1;min-width:150px" maxlength="8">
-        <button class="btn pri" id="nfcCloneBtn">${ic("save")} Clone to tag</button>
-      </div>
-      <div class="row" style="margin-top:6px"><span class="d">Needs a Gen1a "magic" blank — a stock
-        MIFARE Classic/NTAG UID can't be rewritten. Best-effort: the backdoor unlock sequence used
-        here is community-documented, not part of the reader library's own API, and hasn't been
-        verified against real hardware.</span></div>
-    </div>
     <details class="panel">
       <summary style="cursor:pointer"><h3 style="display:inline">Advanced / manual tools</h3></summary>
       <div style="margin-top:10px">
+      <div class="panel">
+        <h3>Write NDEF text</h3>
+        <div class="btnrow">
+          <input type="text" id="nfcWriteText" placeholder="Text to write, e.g. a URL or note"
+                 style="flex:1;min-width:150px">
+          <button class="btn pri" id="nfcWriteBtn">${ic("play")} Write to tag</button>
+        </div>
+        <div class="row" style="margin-top:6px"><span class="d">Hold a blank NTAG2xx tag to the
+          reader, then press Write. User memory starts at block 4.</span></div>
+      </div>
+      <div class="panel">
+        <h3>Clone UID to magic card</h3>
+        <div class="btnrow">
+          <input type="text" id="nfcCloneUid" placeholder="4-byte hex UID, e.g. 04A1B2C3"
+                 value="${esc(nfcState.cloneUid)}" style="flex:1;min-width:150px" maxlength="8">
+          <button class="btn pri" id="nfcCloneBtn">${ic("save")} Clone to tag</button>
+        </div>
+        <div class="row" style="margin-top:6px"><span class="d">Needs a Gen1a "magic" blank — a stock
+          MIFARE Classic/NTAG UID can't be rewritten. Best-effort: the backdoor unlock sequence used
+          here is community-documented, not part of the reader library's own API, and hasn't been
+          verified against real hardware.</span></div>
+      </div>
       <div class="panel">
         <h3>Reader status</h3>
         <div class="row"><span class="k">Requested</span><span class="v">${esc(r.requested)}</span></div>
@@ -1311,10 +1311,18 @@ RENDER.library = async () => {
 };
 
 /* ---- IR ----------------------------------------------------------------- */
+// Full tab set for the operator. Simple Home's "Use a remote" task only
+// needs the two everyday ones -- Universal (fire at every known model),
+// Settings (GPIO pin assignment), and Self-test (hardware diagnostics) are
+// setup/operator vocabulary a non-technical user never needs to see.
 const IR_TABS = [
   ["universal","Universal"], ["saved","Saved"], ["learn","Learn"],
   ["settings","Settings"], ["selftest","Self-test"],
 ];
+const IR_TABS_SIMPLE = [["saved","My remotes"], ["learn","Save a remote"]];
+function irTabs(){
+  return store.get("pipui_mode", "simple") === "simple" ? IR_TABS_SIMPLE : IR_TABS;
+}
 const irState = {
   tab:"universal", device:"TV", devices:[], buttons:[], button:"",
   category:"", query:"", remote:null, scanTimer:null, capTimer:null,
@@ -1327,9 +1335,11 @@ function stopIRTimers(){
 
 RENDER.ir = () => {
   const host = $("#v-ir");
+  const tabs = irTabs();
+  if (!tabs.some(([id]) => id === irState.tab)) irState.tab = tabs[0][0];
   host.innerHTML = `
     <div class="tabs" id="irTabs">
-      ${IR_TABS.map(([id,label]) =>
+      ${tabs.map(([id,label]) =>
         `<button data-t="${id}" aria-selected="${irState.tab === id}">${label}</button>`).join("")}
     </div>
     <div id="irBody"><div class="empty">Loading…</div></div>`;
@@ -1503,8 +1513,8 @@ function paintRemote(){
       <div class="list">
         ${r.signals.map((s, i) => `<button class="listitem" data-send="${i}">
           ${ic("play")}<span>${esc(s.name)}</span>
-          <span class="sub2">${esc(s.protocol || s.type)}${
-            s.address ? " " + esc(s.address.split(" ")[0]) : ""}</span></button>`).join("")
+          ${store.get("pipui_mode", "simple") === "simple" ? "" : `<span class="sub2">${esc(s.protocol || s.type)}${
+            s.address ? " " + esc(s.address.split(" ")[0]) : ""}</span>`}</button>`).join("")
           || `<div class="empty">This file has no signals.</div>`}
       </div>
     </div>`;
