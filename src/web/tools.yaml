@@ -68,6 +68,20 @@ tools:
       card) are wired up to the real `proxmark3` client; dump and sniff are
       not implemented yet.
 
+  - id: msr605x
+    name: MSR605X
+    icon: card
+    category: Hardware Tools
+    kind: builtin
+    view: msr
+    simple: true
+    short: Magstripe read/write
+    desc: >-
+      Reads and writes magnetic-stripe cards (tracks 1-3, ISO 7811) over a
+      MSR605X connected by USB HID. Read a card to see its track data, save
+      it to the Card Library, or clone it straight onto a blank/rewritable
+      card with a guided wizard.
+
   - id: library
     name: Card Library
     icon: card
@@ -77,9 +91,9 @@ tools:
     simple: true
     short: Saved cards & fobs
     desc: >-
-      Browse everything saved from the NFC or Proxmark3 tools, rename or
-      delete entries, or press Clone to jump back to the right tool with
-      that card's ID already filled in.
+      Browse everything saved from the NFC, Proxmark3, or MSR605X tools,
+      rename or delete entries, or press Clone to jump back to the right
+      tool with that card's ID or track data already filled in.
 
   - id: ir
     name: Infrared

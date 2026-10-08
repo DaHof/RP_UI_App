@@ -39,6 +39,7 @@ import btweb  # noqa: E402
 import hardware  # noqa: E402
 import irweb  # noqa: E402
 import mmwave  # noqa: E402
+import msrweb  # noqa: E402
 import paths  # noqa: E402
 import pins as pins_module  # noqa: E402
 import pmweb  # noqa: E402
@@ -323,6 +324,8 @@ class SaveProfileRequest(BaseModel):
     category: str | None = None
     notes: str | None = None
     dump_hex: str | None = None
+    tracks: dict[str, str | None] | None = None
+    raw_tracks: dict[str, str | None] | None = None
 
 
 @app.post("/api/library")
@@ -350,6 +353,10 @@ async def save_profile(request: SaveProfileRequest):
             profile.notes = request.notes
         if request.dump_hex:
             profile.dump = TagDump(present=True, complete=True, raw_bytes=request.dump_hex)
+        if request.tracks is not None:
+            profile.tech_details["tracks"] = request.tracks
+        if request.raw_tracks is not None:
+            profile.tech_details["raw_tracks"] = request.raw_tracks
         store.upsert(profile)
     return profile.to_dict()
 
@@ -583,6 +590,96 @@ async def pm3_clone_hf_uid(request: CloneHfUidRequest):
 
 
 # ---------------------------------------------------------------------------
+# MSR605X: magstripe read/save/clone over HID (src/msr/msr605x_client.py).
+# No RAW mode, BPI/BPC, leading-zero, or LED control -- just what read/save
+# and the clone wizard need.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/msr/status")
+async def msr_status():
+    return await run_in_threadpool(msrweb.device_info)
+
+
+@app.post("/api/msr/read")
+async def msr_read():
+    ok, message, tracks, retry = await run_in_threadpool(msrweb.read)
+    return {"ok": ok, "message": message, "retry": retry, **tracks}
+
+
+class MsrWriteRequest(BaseModel):
+    track1: str | None = None
+    track2: str | None = None
+    track3: str | None = None
+
+
+@app.post("/api/msr/write")
+async def msr_write(request: MsrWriteRequest):
+    ok, message = await run_in_threadpool(msrweb.write, request.track1, request.track2, request.track3)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+class MsrEraseRequest(BaseModel):
+    track1: bool = False
+    track2: bool = False
+    track3: bool = False
+
+
+@app.post("/api/msr/erase")
+async def msr_erase(request: MsrEraseRequest):
+    ok, message = await run_in_threadpool(msrweb.erase, request.track1, request.track2, request.track3)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+class MsrCoercivityRequest(BaseModel):
+    hi: bool
+
+
+@app.post("/api/msr/coercivity")
+async def msr_coercivity(request: MsrCoercivityRequest):
+    ok, message = await run_in_threadpool(msrweb.set_coercivity, request.hi)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+class MsrBpiRequest(BaseModel):
+    track: int
+    bpi: int
+
+
+@app.post("/api/msr/bpi")
+async def msr_bpi(request: MsrBpiRequest):
+    ok, message = await run_in_threadpool(msrweb.set_bpi, request.track, request.bpi)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+@app.post("/api/msr/read-raw")
+async def msr_read_raw():
+    ok, message, tracks = await run_in_threadpool(msrweb.read_raw)
+    return {"ok": ok, "message": message, **tracks}
+
+
+class MsrWriteRawRequest(BaseModel):
+    track1: str | None = None
+    track2: str | None = None
+    track3: str | None = None
+
+
+@app.post("/api/msr/write-raw")
+async def msr_write_raw(request: MsrWriteRawRequest):
+    ok, message = await run_in_threadpool(msrweb.write_raw, request.track1, request.track2, request.track3)
+    if not ok:
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
+    return {"ok": True, "message": message}
+
+
+# ---------------------------------------------------------------------------
 # Settings: feature toggles -- shared with the Tkinter app via the same file
 # ---------------------------------------------------------------------------
 
@@ -677,7 +774,15 @@ async def index():
     page = paths.STATIC_DIR / "index.html"
     if not page.exists():
         raise HTTPException(status_code=404, detail="index.html has not been built yet")
-    return FileResponse(page)
+    # No Cache-Control means the browser applies a heuristic freshness
+    # lifetime off Last-Modified and can keep serving a stale copy of this
+    # single self-contained page for a long time -- confirmed live: a kiosk
+    # Chromium profile kept running old JS through several service restarts
+    # and even full relaunches with the same --user-data-dir, with no error
+    # and no network request, until its disk cache was bypassed. This is a
+    # one-page app edited often during development, so it must always be
+    # fetched fresh.
+    return FileResponse(page, headers={"Cache-Control": "no-store"})
 
 
 if paths.STATIC_DIR.exists():

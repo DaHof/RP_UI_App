@@ -18,9 +18,10 @@
 #                        aircrack-ng (that tile's per-AP client capture, gated
 #                        behind WIFI_MONITOR_IFACE rather than a capability
 #                        grant -- see wifiscan.py), group membership for
-#                        i2c/gpio/dialout/bluetooth (the last one is what lets
+#                        i2c/gpio/dialout/bluetooth/plugdev (bluetooth lets
 #                        the LD2450 mmWave reader open /dev/serial0 without
-#                        root)
+#                        root; plugdev + a udev rule is what lets the MSR605X
+#                        tile open that HID device without root)
 #   - Kiosk deps:        chromium, unclutter
 #   - btop, a terminal emulator (whatever provides x-terminal-emulator)
 #   - Claude Code CLI:   Node.js 20.x (via NodeSource, if nothing recent is
@@ -75,7 +76,23 @@ apt_install iw
 apt_install arp-scan
 apt_install aircrack-ng
 
-usermod -aG i2c,gpio,dialout,bluetooth "$REAL_USER" 2>/dev/null || true
+usermod -aG i2c,gpio,dialout,bluetooth,plugdev "$REAL_USER" 2>/dev/null || true
+
+# MSR605X magstripe reader/writer (src/msr/msr605x_client.py) -- a raw HID
+# device (USB 0801:0003) with no vendor Linux driver, so by default only
+# root can open it. This udev rule hands both the USB device node and the
+# hidraw node to the plugdev group (the usermod above puts the dashboard's
+# user in it) -- confirmed necessary and sufficient against real hardware,
+# not a guess: without it, hid.device().open() fails with "open failed".
+MSR605X_RULES=/etc/udev/rules.d/99-msr605x.rules
+if [ ! -f "$MSR605X_RULES" ]; then
+  cat > "$MSR605X_RULES" <<'RULES'
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0801", ATTRS{idProduct}=="0003", MODE="0664", GROUP="plugdev"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0801", ATTRS{idProduct}=="0003", MODE="0664", GROUP="plugdev"
+RULES
+  udevadm control --reload-rules && udevadm trigger
+  echo "Installed $MSR605X_RULES"
+fi
 
 # Lets the Network Scanner tile (src/web/wifiscan.py) trigger `iw scan` and
 # `arp-scan` as the dashboard's normal non-root user -- without this they
@@ -175,4 +192,4 @@ fi
 
 echo
 echo "Also needs a fresh login (or that same reboot) to take effect: the"
-echo "i2c/gpio/dialout/bluetooth group membership just added for $REAL_USER."
+echo "i2c/gpio/dialout/bluetooth/plugdev group membership just added for $REAL_USER."

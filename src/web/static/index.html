@@ -490,6 +490,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);min-height:44px}
     <section class="view" id="v-ir"></section>
     <section class="view" id="v-bluetooth"></section>
     <section class="view" id="v-proxmark"></section>
+    <section class="view" id="v-msr"></section>
     <section class="view" id="v-diag"></section>
     <section class="view" id="v-pins"></section>
     <section class="view" id="v-mmwave"></section>
@@ -686,7 +687,7 @@ if (themeParam && THEMES.some(([id]) => id === themeParam)){
    =========================================================================== */
 const TITLES = {
   home:"PIP-UI", nfc:"NFC / RFID", library:"NFC Library", ir:"Infrared",
-  bluetooth:"Bluetooth", proxmark:"Proxmark3", diag:"Diagnostics",
+  bluetooth:"Bluetooth", proxmark:"Proxmark3", msr:"MSR605X", diag:"Diagnostics",
   pins:"GPIO Pins", mmwave:"mmWave Radar", wifiscan:"Network Scanner",
   settings:"Settings", themes:"Themes",
 };
@@ -1066,7 +1067,7 @@ RENDER.library = async () => {
   host.innerHTML = `<div class="panel"><h3>${data.count} saved tag${data.count === 1 ? "" : "s"}</h3>
     ${data.profiles.map(p => `<div class="row">
       <span class="k">${esc(p.friendly_name || "(unnamed)")}
-        <span class="dim" style="display:block;font-size:11px">${esc(p.tag_type)}${p.dump?.present ? " · dump saved" : ""}</span></span>
+        <span class="dim" style="display:block;font-size:11px">${esc(p.tag_type)}${p.dump?.present ? " · dump saved" : ""}${p.tech_details?.tracks ? " · tracks saved" : ""}${p.tech_details?.raw_tracks ? " · raw snapshot saved" : ""}</span></span>
       <span class="v mono">${esc(p.uid)}</span>
       <button class="btn" data-clone="${esc(p.id)}"
               style="min-height:28px;padding:0 9px">${ic("play")} Clone</button>
@@ -1092,15 +1093,33 @@ RENDER.library = async () => {
   });
 
   // LF and HF entries saved from the Proxmark3 tile (category "LF"/"HF")
-  // clone via that same tile's own commands; everything else was saved from
-  // the PN532/NFC tile and clones via UID-to-magic-card there instead.
-  // There's no "replay a saved dump" write path yet -- this only ever
-  // pushes the UID.
+  // clone via that same tile's own commands; MSR entries (category "MSR")
+  // carry full track data and clone via the MSR605X write wizard; everything
+  // else was saved from the PN532/NFC tile and clones via UID-to-magic-card
+  // there instead. There's no "replay a saved dump" write path for NFC yet --
+  // that one only ever pushes the UID.
   host.querySelectorAll("[data-clone]").forEach(btn => {
     btn.onclick = () => {
       const id = btn.getAttribute("data-clone");
       const profile = data.profiles.find(p => p.id === id);
       if (!profile) return;
+      if (profile.category === "MSR") {
+        const tracks = profile.tech_details?.tracks || {};
+        msrWizard.found = { track1: tracks.track1 || "", track2: tracks.track2 || "", track3: tracks.track3 || "" };
+        msrWizard.step = "swap";
+        msrWizard.error = ""; msrWizard.result = null;
+        go("msr");
+        return;
+      }
+      if (profile.category === "MSR-RAW") {
+        // No ISO text to show -- drop straight into the raw panel with the
+        // snapshot loaded, ready for "Write captured bytes to card".
+        const raw = profile.tech_details?.raw_tracks || {};
+        msrState.rawTracks = { track1: raw.track1 ?? null, track2: raw.track2 ?? null, track3: raw.track3 ?? null };
+        go("msr");
+        toast("Raw snapshot loaded -- swap in a blank card, then Write captured bytes");
+        return;
+      }
       const uid = profile.uid.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
       if (profile.category === "LF") {
         pmState.emId = uid;
@@ -2641,6 +2660,422 @@ function paintProxmark(message){
   };
 }
 
+/* ---- MSR605X: magstripe read/save/clone ----------------------------------
+   Read/write ISO 7811 tracks 1-3 over HID (src/msr/msr605x_client.py). No
+   RAW mode, BPI/BPC, or LED control -- see that module's own docstring for
+   why. Shaped like the Proxmark3 panel above: a guided wizard for the
+   common case, manual controls under Advanced. */
+const msrState = {
+  status: null, tracks: null, writeTrack1: "", writeTrack2: "", writeTrack3: "",
+  rawTracks: { track1: null, track2: null, track3: null },
+};
+const msrWizard = { step: "start", found: null, error: "", note: "", result: null };
+
+// null means "read but failed to parse" (bad swipe); "" means "read fine,
+// track was genuinely blank" -- both real device answers, kept distinct
+// instead of collapsing to one "no data" label.
+function msrTrackLabel(value){
+  if (value === null) return "(unreadable)";
+  if (value === "") return "(blank)";
+  return value;
+}
+
+function msrHasData(tracks){
+  return !!(tracks && (tracks.track1 || tracks.track2 || tracks.track3));
+}
+
+// One read, and -- if the device just auto-switched a track's BPI and
+// thinks another swipe is worth trying -- one automatic second read, with
+// a status callback in between so the screen actually says "swipe again"
+// instead of silently sitting on "Reading…" through both swipes. Only one
+// retry: the backend itself stops auto-switching after a track has failed
+// at both BPI settings, so a second attempt is as far as this ever goes.
+async function msrReadWithRetry(onWaitingForSwipeAgain){
+  let res = await api("/api/msr/read", { method:"POST" });
+  if (res.retry){
+    onWaitingForSwipeAgain(res);
+    res = await api("/api/msr/read", { method:"POST" });
+  }
+  return res;
+}
+
+RENDER.msr = async () => {
+  try { msrState.status = await api("/api/msr/status"); } catch { msrState.status = null; }
+  paintMsr();
+};
+
+function renderMsrWizard(){
+  const w = msrWizard;
+  const bigBtn = "min-height:52px;font-size:16px;width:100%";
+  if (w.step === "swap" && w.found){
+    return `<div class="panel">
+      <h3>Clone a card — step 2 of 3</h3>
+      <div class="d" style="margin-bottom:10px">Take the source card out, and put a
+        <b>blank or rewritable</b> card in instead.</div>
+      ${w.note ? `<div class="row" style="margin-bottom:10px">
+        <span class="v" style="color:var(--accent)">${esc(w.note)}</span></div>` : ""}
+      <div class="btnrow">
+        <button class="btn pri" id="wizMsrWrite" style="${bigBtn}">${ic("save")} Write to card</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn" id="wizMsrRetryRead">${ic("refresh")} Read the source card again</button>
+        <button class="btn" id="wizMsrCancel">Start over</button>
+      </div>
+      ${w.error ? `<div class="row" style="margin-top:8px">
+        <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+    </div>`;
+  }
+  if (w.step === "result" && w.result){
+    return `<div class="panel">
+      <h3>Clone a card — done</h3>
+      <div class="row" style="margin:8px 0">
+        <span class="v" style="font-size:16px;color:var(${w.result.ok ? "--green" : "--red"})">
+          ${w.result.ok ? "✓" : "⚠"} ${esc(w.result.text)}</span>
+      </div>
+      <div class="btnrow">
+        ${!w.result.ok ? `<button class="btn pri" id="wizMsrRetryWrite" style="${bigBtn}">
+          ${ic("refresh")} Try writing again</button>` : ""}
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn ${w.result.ok ? "pri" : ""}" id="wizMsrCancel" style="${bigBtn}">
+          ${ic("card")} Clone another card</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="panel">
+    <h3>Clone a card — step 1 of 3</h3>
+    <div class="d" style="margin-bottom:10px">Swipe the card you want to copy.</div>
+    <div class="btnrow">
+      <button class="btn pri" id="wizMsrRead" style="${bigBtn}">${ic("card")} Read card</button>
+    </div>
+    ${w.error ? `<div class="row" style="margin-top:8px">
+      <span class="v" style="color:var(--red)">${esc(w.error)}</span></div>` : ""}
+  </div>`;
+}
+
+function paintMsr(message){
+  const s = msrState.status;
+  const t = msrState.tracks;
+  $("#v-msr").innerHTML = `
+    ${message ? `<div class="banner">${ic("alert")}<div>${esc(message)}</div></div>` : ""}
+    ${renderMsrWizard()}
+    <details class="panel" ${t ? "open" : ""}>
+    <summary style="cursor:pointer"><h3 style="display:inline">Advanced / manual tools</h3></summary>
+    <div style="margin-top:10px">
+    <div class="panel">
+      <div class="row"><span class="k">Device</span>
+        <span class="v">${s?.connected ? "Connected" : "Not connected"}</span></div>
+      ${s?.connected ? `
+        <div class="row"><span class="k">Model / firmware</span>
+          <span class="v mono">${esc(s.model || "?")} / ${esc(s.firmware || "?")}</span></div>
+        <div class="row"><span class="k">Coercivity</span>
+          <span class="v">${s.coercivity === "H" ? "Hi-Co" : s.coercivity === "L" ? "Lo-Co" : "Unknown"}</span></div>`
+      : `<div class="srow"><span class="k">Note</span>
+          <span class="d">${esc(s?.detail || "No MSR605X detected")}</span></div>`}
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn pri" id="msrRead">${ic("card")} Read card</button>
+        <button class="btn" id="msrRefresh">${ic("refresh")} Device info</button>
+        <button class="btn" id="msrLibBtn">${ic("card")} Library</button>
+      </div>
+    </div>
+    <div class="panel" id="msrResultPanel">
+      ${msrHasData(t) ? `
+        <h3>Card read</h3>
+        <div class="row"><span class="k">Track 1</span><span class="v mono">${esc(msrTrackLabel(t.track1))}</span></div>
+        <div class="row"><span class="k">Track 2</span><span class="v mono">${esc(msrTrackLabel(t.track2))}</span></div>
+        <div class="row"><span class="k">Track 3</span><span class="v mono">${esc(msrTrackLabel(t.track3))}</span></div>
+        <div class="btnrow" style="margin-top:8px">
+          <input type="text" id="msrSaveName" placeholder="Name, e.g. Hotel Key"
+                 style="flex:1;min-width:150px">
+          <button class="btn pri" id="msrSave">${ic("card")} Save to library</button>
+        </div>`
+      : t ? `<h3>No data read</h3>
+          <div class="d">Every track came back blank or unreadable -- make sure the card swiped
+            through flat and try again.</div>`
+      : `<div class="empty">Press Read card to swipe something through the MSR605X.</div>`}
+    </div>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Write tracks manually (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0">Fill in whichever tracks you want written -- an empty
+        field leaves that track untouched. ISO 7811 data only (uppercase letters/digits and a
+        handful of punctuation on track 1; digits and <span class="mono">=</span> on tracks 2
+        and 3).</div>
+      <div class="btnrow" style="margin-bottom:6px">
+        <input type="text" id="msrWriteT1" placeholder="Track 1" value="${esc(msrState.writeTrack1)}" style="flex:1">
+      </div>
+      <div class="btnrow" style="margin-bottom:6px">
+        <input type="text" id="msrWriteT2" placeholder="Track 2" value="${esc(msrState.writeTrack2)}" style="flex:1">
+      </div>
+      <div class="btnrow" style="margin-bottom:8px">
+        <input type="text" id="msrWriteT3" placeholder="Track 3" value="${esc(msrState.writeTrack3)}" style="flex:1">
+      </div>
+      <div class="btnrow">
+        <button class="btn pri" id="msrWrite">${ic("save")} Write to card</button>
+      </div>
+    </details>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Erase tracks (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0">Wipes the selected tracks on whatever card is swiped.
+        This can't be undone.</div>
+      <div class="btnrow" style="margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="msrEraseT1"> Track 1</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="msrEraseT2"> Track 2</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="msrEraseT3"> Track 3</label>
+      </div>
+      <div class="btnrow">
+        <button class="btn danger" id="msrErase">${ic("trash")} Erase selected tracks</button>
+      </div>
+    </details>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Coercivity (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0">Most gift/loyalty cards are Lo-Co; most access badges
+        and bank cards are Hi-Co. Writing with the wrong setting often still reports success but
+        the card won't read back correctly.</div>
+      <div class="btnrow">
+        <button class="btn" id="msrSetLoco">Set Lo-Co</button>
+        <button class="btn" id="msrSetHico">Set Hi-Co</button>
+      </div>
+    </details>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Track BPI (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0">Bank-standard track 2 is 75 bpi, but some non-bank cards
+        (hotel keys, access badges, loyalty/gift cards) record it at 210 bpi instead. A track
+        recorded at a BPI the reader isn't set for comes back as a consistent, every-swipe decode
+        error on that track -- if that matches what you're seeing, try switching the affected
+        track here, then read the card again.</div>
+      ${["1","2","3"].map(n => `
+        <div class="btnrow" style="margin-bottom:6px">
+          <span class="k" style="min-width:60px">Track ${n}</span>
+          <button class="btn" data-bpi-track="${n}" data-bpi="75">75 bpi</button>
+          <button class="btn" data-bpi-track="${n}" data-bpi="210">210 bpi</button>
+        </div>`).join("")}
+    </details>
+    <details class="panel">
+      <summary style="cursor:pointer"><h3 style="display:inline">Raw exact clone (advanced)</h3></summary>
+      <div class="d" style="margin:8px 0">Last resort for a card that won't decode as ISO 7811 text no
+        matter what (BPI tried both ways, still nothing) -- this skips character/parity checking
+        entirely and copies the literal bytes off the stripe, so it works even on non-standard or
+        proprietary encodings. You won't be able to read the data as text; it's a byte-for-byte
+        copy, not a translation.</div>
+      <div class="btnrow">
+        <button class="btn pri" id="msrReadRaw">${ic("card")} Read card (raw)</button>
+      </div>
+      <div style="margin-top:8px">
+        ${["1","2","3"].map(n => `
+          <div class="row"><span class="k">Track ${n}</span>
+            <span class="v mono" style="word-break:break-all;font-size:11px">${esc(msrState.rawTracks[`track${n}`] ?? "(none captured)")}</span></div>`).join("")}
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <input type="text" id="msrRawSaveName" placeholder="Name, e.g. Petro-Points Card"
+               style="flex:1;min-width:150px">
+        <button class="btn" id="msrRawSave">${ic("card")} Save snapshot to library</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn pri" id="msrWriteRaw">${ic("save")} Write captured bytes to card</button>
+      </div>
+      <div class="d" style="margin-top:6px">Read the source card above, swap in the blank/rewritable
+        card, then press Write. Or save the snapshot to the library to clone it again later without
+        needing the original card on hand.</div>
+    </details>
+    </div>
+    </details>`;
+
+  async function wizMsrDoRead(){
+    msrWizard.error = ""; msrWizard.note = "";
+    paintMsr("Reading the card…");
+    let res;
+    try {
+      // Plain, no-jargon prompt here -- this guided flow is the one a
+      // non-technical person uses, so "swipe again" beats explaining BPI.
+      res = await msrReadWithRetry(() => paintMsr("Almost — swipe the same card again"));
+    }
+    catch (e){ msrWizard.error = e.message; paintMsr(); return; }
+    msrState.tracks = { track1: res.track1, track2: res.track2, track3: res.track3 };
+    if (res.ok){
+      msrWizard.found = { ...msrState.tracks };
+      msrWizard.step = "swap";
+      // A partial read (some track came back unreadable) still has usable
+      // data worth cloning, but the person should know before they commit
+      // a swipe to it -- plain-language version, the full technical detail
+      // (which track, which bpi) stays in the Advanced panel's message.
+      if (res.message && res.message !== "Card read") {
+        msrWizard.note = res.message.includes("still won't decode")
+          ? "One part of this card couldn't be read -- it may be worn or damaged. The rest looks fine."
+          : "Part of this card didn't read fully -- it may still work, or try swiping it again before cloning.";
+      }
+    } else {
+      msrWizard.error = res.message || "Could not read the card";
+    }
+    paintMsr();
+  }
+  const wizMsrRead = $("#wizMsrRead");
+  if (wizMsrRead) wizMsrRead.onclick = wizMsrDoRead;
+  const wizMsrRetryRead = $("#wizMsrRetryRead");
+  if (wizMsrRetryRead) wizMsrRetryRead.onclick = wizMsrDoRead;
+
+  async function wizMsrDoWrite(){
+    msrWizard.error = "";
+    paintMsr("Writing the card…");
+    try {
+      await api("/api/msr/write", { method:"POST", body: JSON.stringify(msrWizard.found) });
+    } catch (e){
+      msrWizard.step = "result";
+      msrWizard.result = { ok:false, text:`Writing failed — ${e.message}. Make sure the card is inserted and try again.` };
+      paintMsr();
+      return;
+    }
+    paintMsr("Checking the new card matches…");
+    const norm = (v) => v || "";
+    let vres = null;
+    try { vres = await api("/api/msr/read", { method:"POST" }); } catch {}
+    if (vres) msrState.tracks = { track1: vres.track1, track2: vres.track2, track3: vres.track3 };
+    const matches = !!vres?.ok && ["track1","track2","track3"].every(k => norm(msrWizard.found[k]) === norm(vres[k]));
+    msrWizard.result = matches
+      ? { ok:true, text:"Done — the new card matches." }
+      : { ok:false, text: vres?.ok ? "Didn't match — the new card reads back differently." : "Couldn't read the new card back — make sure it's still in the reader." };
+    msrWizard.step = "result";
+    paintMsr();
+  }
+  const wizMsrWrite = $("#wizMsrWrite");
+  if (wizMsrWrite) wizMsrWrite.onclick = wizMsrDoWrite;
+  const wizMsrRetryWrite = $("#wizMsrRetryWrite");
+  if (wizMsrRetryWrite) wizMsrRetryWrite.onclick = wizMsrDoWrite;
+  const wizMsrCancel = $("#wizMsrCancel");
+  if (wizMsrCancel) wizMsrCancel.onclick = () => {
+    msrWizard.step = "start"; msrWizard.found = null; msrWizard.error = ""; msrWizard.note = ""; msrWizard.result = null;
+    paintMsr();
+  };
+
+  $("#msrRefresh").onclick = async () => {
+    paintMsr("Checking for an MSR605X…");
+    try { msrState.status = await api("/api/msr/status"); paintMsr(); }
+    catch (e){ paintMsr(e.message); }
+  };
+  $("#msrLibBtn").onclick = () => go("library");
+  $("#msrRead").onclick = async () => {
+    paintMsr("Reading the card…");
+    let res;
+    try { res = await msrReadWithRetry(r => paintMsr(`${r.message} — swipe again now`)); }
+    catch (e){ paintMsr(e.message); return; }
+    msrState.tracks = { track1: res.track1, track2: res.track2, track3: res.track3 };
+    paintMsr(res.message === "Card read" ? "" : res.message);
+  };
+
+  const msrSave = $("#msrSave");
+  if (msrSave) msrSave.onclick = async () => {
+    const name = $("#msrSaveName").value.trim();
+    const tr = msrState.tracks;
+    try {
+      const res = await api("/api/library", {
+        method:"POST",
+        body: JSON.stringify({
+          uid: tr.track2 || tr.track1 || tr.track3 || `MSR-${Date.now()}`,
+          tag_type: "Magstripe",
+          category: "MSR",
+          friendly_name: name || undefined,
+          technologies: ["ISO7811"],
+          tracks: tr,
+        }),
+      });
+      toast(`Saved as ${res.friendly_name}`);
+    } catch (e){ toast(e.message); }
+  };
+
+  $("#msrWriteT1").oninput = (e) => { msrState.writeTrack1 = e.target.value; };
+  $("#msrWriteT2").oninput = (e) => { msrState.writeTrack2 = e.target.value; };
+  $("#msrWriteT3").oninput = (e) => { msrState.writeTrack3 = e.target.value; };
+  $("#msrWrite").onclick = async () => {
+    const track1 = $("#msrWriteT1").value.trim();
+    const track2 = $("#msrWriteT2").value.trim();
+    const track3 = $("#msrWriteT3").value.trim();
+    if (!track1 && !track2 && !track3) return toast("Fill in at least one track");
+    paintMsr("Writing the card…");
+    try {
+      const res = await api("/api/msr/write", {
+        method:"POST",
+        body: JSON.stringify({ track1: track1 || null, track2: track2 || null, track3: track3 || null }),
+      });
+      paintMsr(res.message);
+    } catch (e){ paintMsr(e.message); }
+  };
+
+  $("#msrErase").onclick = async () => {
+    const track1 = $("#msrEraseT1").checked, track2 = $("#msrEraseT2").checked, track3 = $("#msrEraseT3").checked;
+    if (!track1 && !track2 && !track3) return toast("Select at least one track");
+    const ok = await confirmAction({
+      title:"Erase selected tracks?",
+      body:"This clears data on the card currently in the reader. This cannot be undone.",
+      confirmLabel:"Erase",
+    });
+    if (!ok) return;
+    paintMsr("Erasing…");
+    try {
+      const res = await api("/api/msr/erase", { method:"POST", body: JSON.stringify({ track1, track2, track3 }) });
+      paintMsr(res.message);
+    } catch (e){ paintMsr(e.message); }
+  };
+
+  async function msrSetCoercivity(hi){
+    paintMsr(hi ? "Setting Hi-Co…" : "Setting Lo-Co…");
+    try {
+      const res = await api("/api/msr/coercivity", { method:"POST", body: JSON.stringify({ hi }) });
+      try { msrState.status = await api("/api/msr/status"); } catch {}
+      paintMsr(res.message);
+    } catch (e){ paintMsr(e.message); }
+  }
+  $("#msrSetLoco").onclick = () => msrSetCoercivity(false);
+  $("#msrSetHico").onclick = () => msrSetCoercivity(true);
+
+  document.querySelectorAll("[data-bpi-track]").forEach(btn => {
+    btn.onclick = async () => {
+      const track = Number(btn.getAttribute("data-bpi-track"));
+      const bpi = Number(btn.getAttribute("data-bpi"));
+      paintMsr(`Setting track ${track} to ${bpi} bpi…`);
+      try {
+        const res = await api("/api/msr/bpi", { method:"POST", body: JSON.stringify({ track, bpi }) });
+        paintMsr(res.message);
+      } catch (e){ paintMsr(e.message); }
+    };
+  });
+
+  $("#msrReadRaw").onclick = async () => {
+    paintMsr("Reading the card (raw)…");
+    try {
+      const res = await api("/api/msr/read-raw", { method:"POST" });
+      msrState.rawTracks = { track1: res.track1, track2: res.track2, track3: res.track3 };
+      paintMsr(res.message === "Raw capture complete" ? "" : res.message);
+    } catch (e){ paintMsr(e.message); }
+  };
+  $("#msrRawSave").onclick = async () => {
+    const t = msrState.rawTracks;
+    if (!t.track1 && !t.track2 && !t.track3) return toast("Read a card (raw) first -- nothing captured yet");
+    const name = $("#msrRawSaveName").value.trim();
+    try {
+      const res = await api("/api/library", {
+        method:"POST",
+        body: JSON.stringify({
+          uid: t.track2 || t.track1 || t.track3 || `MSR-RAW-${Date.now()}`,
+          tag_type: "Magstripe (raw)",
+          category: "MSR-RAW",
+          friendly_name: name || undefined,
+          technologies: ["RAW"],
+          raw_tracks: t,
+        }),
+      });
+      toast(`Saved as ${res.friendly_name}`);
+    } catch (e){ toast(e.message); }
+  };
+  $("#msrWriteRaw").onclick = async () => {
+    const t = msrState.rawTracks;
+    if (!t.track1 && !t.track2 && !t.track3) return toast("Read a card (raw) first -- nothing captured yet");
+    paintMsr("Writing raw bytes to card…");
+    try {
+      const res = await api("/api/msr/write-raw", { method:"POST", body: JSON.stringify(t) });
+      paintMsr(res.message);
+    } catch (e){ paintMsr(e.message); }
+  };
+}
+
 /* ---- themes ------------------------------------------------------------- */
 RENDER.themes = () => {
   const current = document.documentElement.getAttribute("data-theme");
@@ -2671,7 +3106,7 @@ RENDER.themes = () => {
 /* ===========================================================================
    12. HEADER STATE + POLLING
    =========================================================================== */
-const HEADER_CHANNELS = [["pn532","PN532"],["sdr","SDR"],["proxmark","PM3"],["wifi","WIFI"]];
+const HEADER_CHANNELS = [["pn532","PN532"],["sdr","SDR"],["proxmark","PM3"],["msr605x","MSR"],["wifi","WIFI"]];
 
 function paintPresence(){
   const chans = state.health?.channels || [];

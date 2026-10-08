@@ -131,6 +131,41 @@ After rebooting, confirm the LIRC device node is present:
 ls -l /dev/lirc*
 ```
 
+## MSR605X (magstripe reader/writer) setup
+
+The MSR605X (and its common clones, e.g. DEFTUN-branded ones) is a USB HID
+device -- VID:PID `0801:0003` -- with no vendor Linux driver and no virtual
+serial port, unlike the Proxmark3. The web dashboard talks to it directly
+over HID via `src/msr/msr605x_client.py`, using the `hidapi` Python package
+(`pip install hidapi` -- see `src/web/requirements.txt`; note this is a
+different PyPI package than the similarly-named `hid`/pyhidapi, which
+exposes a different API under the same import name and will not work here).
+
+By default only root can open the device. `scripts/install-tools.sh` sets
+this up for you (a udev rule plus `plugdev` group membership); to do it by
+hand:
+
+```bash
+sudo tee /etc/udev/rules.d/99-msr605x.rules <<'RULES'
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0801", ATTRS{idProduct}=="0003", MODE="0664", GROUP="plugdev"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0801", ATTRS{idProduct}=="0003", MODE="0664", GROUP="plugdev"
+RULES
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo usermod -aG plugdev "$USER"
+# log out/in (or reboot) for the group membership to take effect
+```
+
+The protocol itself (ESC-prefixed ASCII commands over 64-byte HID reports)
+is a from-scratch port of the one documented by
+[magnetic-fox/msr605x](https://github.com/magnetic-fox/msr605x), confirmed
+against real hardware wired to this Pi -- comm test, device model, firmware
+version, coercivity, and a real card read/write all round-tripped correctly.
+
+Saved magstripe cards carry their full track data (`tech_details.tracks` in
+`data/library.json`), not just an ID -- worth keeping in mind, since that can
+include a full card number. This is a workbench tool for cards you own, same
+threat model as the Proxmark3 and NFC tiles above.
+
 ## Bluetooth (BlueZ) setup (planned)
 
 The Bluetooth UI is scaffolded and a BlueZ client stub lives in `src/bluetooth/bluez_client.py`.

@@ -34,6 +34,8 @@ USB_INTEREST = (
     ("realtek semiconductor corp. rtl", "RTL-SDR"),
     ("proxmark", "Proxmark3"),
     ("westhues", "Proxmark3"),
+    ("magtek", "MSR605X"),
+    ("0801:0003", "MSR605X"),
     ("nfc", "NFC"),
     ("acr122", "NFC"),
 )
@@ -194,6 +196,17 @@ def _probe_proxmark() -> tuple[str, str]:
     return FAIL, result.detail
 
 
+def _probe_msr605x() -> tuple[str, str]:
+    """Presence only, via HID enumeration -- cheap enough for the FAST tier
+    (no subprocess, no opening the device) and never contends with an
+    in-flight read/write the way actually opening it would."""
+    try:
+        from msr.msr605x_client import is_present
+    except Exception as exc:
+        return UNKNOWN, f"MSR605X support not available: {exc}"
+    return (PASS, "MSR605X detected") if is_present() else (FAIL, "No MSR605X detected")
+
+
 def _probe_ir() -> tuple[str, str]:
     if not shell.which("irsend") and not shell.which("ir-ctl"):
         return FAIL, "Neither irsend nor ir-ctl is installed"
@@ -278,6 +291,7 @@ PROBES: tuple[Probe, ...] = (
     Probe("mmwave", "mmWave Radar", _probe_mmwave, FAST),
     Probe("thermal", "CPU / Thermal", _probe_thermal, FAST),
     Probe("ir", "IR / LIRC", _probe_ir, FAST),
+    Probe("msr605x", "MSR605X", _probe_msr605x, FAST),
     Probe("sdr", "RTL-SDR", _probe_sdr, SLOW),
     Probe("proxmark", "Proxmark3", _probe_proxmark, SLOW),
     Probe("wifi", "Wi-Fi monitor", _probe_wifi, SLOW),

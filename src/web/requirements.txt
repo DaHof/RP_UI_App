@@ -9,3 +9,12 @@ PyYAML
 # LD2450 mmWave radar (src/web/mmwave.py). Only needed for MMWAVE_READER=serial;
 # the dashboard runs fine without it and falls back to the mock reader.
 pyserial
+
+# MSR605X magstripe reader/writer (src/msr/msr605x_client.py), a raw HID
+# device with no virtual serial port. This is the PyPI package named
+# "hidapi" (module import name "hid", class hid.device) -- NOT the
+# similarly-named "hid"/pyhidapi package, which exposes a different API
+# (hid.Device) against the same import name and will not work here.
+# Optional: msrweb.py degrades to "not available" if this isn't installed,
+# same shape as the PN532 adafruit fallback in hardware.py.
+hidapi
