@@ -1868,11 +1868,36 @@ function paintSettings(data){
           <div style="font-size:11px;color:var(--ink-dim)">data/logs/*.log, 1 MiB rotation</div></div>
         <span class="swbtn" aria-hidden="true" data-checked="${!!data.log_enabled}"></span>
       </div>
+    </div>
+    <div class="panel">
+      <h3>Screen &amp; power</h3>
+      <div class="row">
+        <span class="k">Screen idle timeout</span>
+        <span class="v"><select id="screenIdleSelect">
+          <option value="0">Never</option>
+          <option value="2">2 minutes</option>
+          <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
+          <option value="30">30 minutes</option>
+        </select></span>
+      </div>
+      <div style="font-size:11px;color:var(--ink-dim);margin:4px 0 12px">
+        Turns the panel's backlight off after no touches for this long, and back on
+        at the next touch. Goes through <span class="mono">vcgencmd display_power</span> --
+        needs a Pi, not the dev-machine mock.
+      </div>
+      <div class="btnrow">
+        <button class="btn danger" id="btPowerOffDevice">${ic("power")} Power off device</button>
+      </div>
     </div>`;
 
   // The whole row is the hit target; the swbtn inside is purely visual
   // (pointer-events:none in CSS) and just mirrors the row's aria-checked.
-  const pending = { features: { ...f }, log_enabled: !!data.log_enabled };
+  const pending = {
+    features: { ...f },
+    log_enabled: !!data.log_enabled,
+    screen_idle_minutes: data.screen_idle_minutes || 0,
+  };
   const flipRow = (row) => {
     const next = row.getAttribute("aria-checked") !== "true";
     row.setAttribute("aria-checked", String(next));
@@ -1905,6 +1930,30 @@ function paintSettings(data){
   };
   simpleRow.onclick = activateSimple;
   simpleRow.onkeydown = (e) => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activateSimple(); } };
+
+  const idleSelect = $("#screenIdleSelect");
+  idleSelect.value = String(data.screen_idle_minutes || 0);
+  idleSelect.onchange = async () => {
+    const minutes = parseInt(idleSelect.value, 10) || 0;
+    pending.screen_idle_minutes = minutes;
+    await saveSettings(pending);
+    setScreenIdleMinutes(minutes);
+  };
+
+  $("#btPowerOffDevice").onclick = async () => {
+    const ok = await confirmAction({
+      title: "Power off this device?",
+      body: "Shuts the Raspberry Pi down. There's no remote way to turn it back "
+          + "on from here -- you'll need to cut and restore power (or a smart "
+          + "plug / PoE cycle) to boot it again.",
+      confirmLabel: "Power off",
+    });
+    if (!ok) return;
+    try {
+      const res = await api("/api/power/shutdown", { method:"POST" });
+      toast(res.message || "Shutting down…");
+    } catch (e){ toast(e.message); }
+  };
 }
 
 async function saveSettings(pending){
@@ -1917,6 +1966,44 @@ async function saveSettings(pending){
     toast(e.message);
   }
 }
+
+/* ---- Screen idle timeout --------------------------------------------------
+   LCDs don't truly "burn in" the way OLEDs do, but a fully static frame for
+   days isn't great for the backlight either, so an idle screen-off is worth
+   having. This goes through /api/power/screen -> vcgencmd display_power
+   (src/web/power.py), a knob independent of kiosk.sh's own xset/DPMS setting
+   -- the two don't fight each other. Armed from state.settings at boot and
+   on every settings save; a background poll refresh that reports the same
+   value is a no-op so it doesn't keep resetting an in-progress countdown. */
+const screenState = { idleMinutes: 0, off: false, timer: null };
+
+function armScreenIdleTimer(){
+  clearTimeout(screenState.timer);
+  screenState.timer = null;
+  if (!screenState.idleMinutes) return;
+  screenState.timer = setTimeout(async () => {
+    screenState.off = true;
+    try { await api("/api/power/screen", { method:"POST", body: JSON.stringify({ on:false }) }); }
+    catch { /* best-effort -- not a Pi, or vcgencmd unavailable */ }
+  }, screenState.idleMinutes * 60000);
+}
+
+function setScreenIdleMinutes(minutes){
+  minutes = minutes || 0;
+  if (minutes === screenState.idleMinutes) return;
+  screenState.idleMinutes = minutes;
+  armScreenIdleTimer();
+}
+
+function noteScreenActivity(){
+  if (screenState.off){
+    screenState.off = false;
+    api("/api/power/screen", { method:"POST", body: JSON.stringify({ on:true }) }).catch(() => {});
+  }
+  armScreenIdleTimer();
+}
+["pointerdown", "touchstart", "mousemove", "keydown"].forEach(evt =>
+  document.addEventListener(evt, noteScreenActivity, { passive:true }));
 
 /* ---- mmWave radar (LD2450) -----------------------------------------------
    Forward-facing fan, not a full circle -- the sensor's FOV is +/-60deg and it
@@ -3418,6 +3505,7 @@ async function poll(force = false){
     state.tools = tools.tools || [];
     state.toolsErr = tools.error || "";
     state.settings = settings;
+    setScreenIdleMinutes(settings.screen_idle_minutes || 0);
     failures = 0;
     state.connection = "online";
     state.connectionError = "";
@@ -3470,8 +3558,10 @@ async function boot(){
     bootErrors.push(`Tools: ${state.toolsErr}`);
   }
 
-  try { state.settings = await api("/api/settings", { timeoutMs:8000 }); }
-  catch (e) { bootErrors.push(`Settings: ${e?.message || "unavailable"}`); }
+  try {
+    state.settings = await api("/api/settings", { timeoutMs:8000 });
+    setScreenIdleMinutes(state.settings.screen_idle_minutes || 0);
+  } catch (e) { bootErrors.push(`Settings: ${e?.message || "unavailable"}`); }
 
   if (state.connection === "online" && bootErrors.length){
     state.connection = "stale";

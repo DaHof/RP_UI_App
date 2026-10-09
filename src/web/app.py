@@ -43,6 +43,7 @@ import msrweb  # noqa: E402
 import paths  # noqa: E402
 import pins as pins_module  # noqa: E402
 import pmweb  # noqa: E402
+import power  # noqa: E402
 import probes  # noqa: E402
 import settings as settings_module  # noqa: E402
 import shell  # noqa: E402
@@ -686,6 +687,7 @@ async def msr_write_raw(request: MsrWriteRawRequest):
 class SettingsRequest(BaseModel):
     features: dict[str, bool] | None = None
     log_enabled: bool | None = None
+    screen_idle_minutes: int | None = None
 
 
 @app.get("/api/settings")
@@ -695,7 +697,37 @@ async def get_settings():
 
 @app.put("/api/settings")
 async def put_settings(request: SettingsRequest):
-    return settings_module.save(request.features, request.log_enabled)
+    return settings_module.save(
+        request.features, request.log_enabled, request.screen_idle_minutes
+    )
+
+
+# ---------------------------------------------------------------------------
+# Power: screen idle-off (vcgencmd display_power, see src/web/power.py for why
+# not xset/DPMS) and a full device shutdown.
+# ---------------------------------------------------------------------------
+
+class ScreenPowerRequest(BaseModel):
+    on: bool
+
+
+@app.get("/api/power/screen")
+async def get_screen_power():
+    return await run_in_threadpool(power.screen_state)
+
+
+@app.post("/api/power/screen")
+async def set_screen_power(request: ScreenPowerRequest):
+    ok, message = await run_in_threadpool(
+        power.screen_on if request.on else power.screen_off
+    )
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
+
+
+@app.post("/api/power/shutdown")
+async def power_shutdown():
+    ok, message = await run_in_threadpool(power.shutdown)
+    return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 400)
 
 
 # ---------------------------------------------------------------------------

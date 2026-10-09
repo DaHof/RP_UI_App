@@ -201,6 +201,12 @@ def command(argv: list[str]) -> tuple[int, str, str] | None:
     if result is None:
         return None
 
+    # vcgencmd stands in for display_power too -- reports "on" regardless of
+    # mode, since there's no degraded/failed state for a screen-power query to
+    # express, and whatever it's set to query/set is just echoed back.
+    if binary == "vcgencmd" and "display_power" in argv:
+        return 0, "display_power=1", ""
+
     # vcgencmd is two different probes behind one binary.
     if binary == "vcgencmd" and "get_throttled" in argv:
         m = mode()

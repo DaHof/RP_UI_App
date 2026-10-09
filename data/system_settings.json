@@ -4,5 +4,6 @@
   "Bluetooth": true,
   "WiFi": false,
   "Proxmark": true,
-  "log_enabled": true
+  "log_enabled": true,
+  "screen_idle_minutes": 0
 }

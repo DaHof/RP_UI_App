@@ -32,10 +32,18 @@ def snapshot() -> dict:
     return {
         "features": {name: bool(payload.get(name, True)) for name in FEATURES},
         "log_enabled": bool(payload.get("log_enabled", False)),
+        # 0 = never blank. Tkinter has no equivalent of this (it isn't a kiosk),
+        # so it's a web-only key -- still stored here for the same reason
+        # log_enabled is: one settings file, read by whichever front end.
+        "screen_idle_minutes": max(0, int(payload.get("screen_idle_minutes", 0) or 0)),
     }
 
 
-def save(features: dict[str, bool] | None, log_enabled: bool | None) -> dict:
+def save(
+    features: dict[str, bool] | None,
+    log_enabled: bool | None,
+    screen_idle_minutes: int | None = None,
+) -> dict:
     """Merge into the existing file rather than overwrite it.
 
     Tkinter's own save (app.py:157-161) replaces the WHOLE file with just these
@@ -49,6 +57,8 @@ def save(features: dict[str, bool] | None, log_enabled: bool | None) -> dict:
                 payload[name] = bool(features[name])
     if log_enabled is not None:
         payload["log_enabled"] = bool(log_enabled)
+    if screen_idle_minutes is not None:
+        payload["screen_idle_minutes"] = max(0, int(screen_idle_minutes))
 
     try:
         paths.SYSTEM_SETTINGS_JSON.parent.mkdir(parents=True, exist_ok=True)

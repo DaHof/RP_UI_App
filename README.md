@@ -317,6 +317,30 @@ they would fight over the touchscreen.
 
 Logs: `journalctl -u pipui-web -f`.
 
+### Screen idle-off and power off
+
+Settings has a **Screen idle timeout** (off by default) that turns the
+touchscreen's backlight off after N minutes of no touches, and a **Power off
+device** button. Both go through `src/web/power.py`, not `xset`/DPMS --
+`vcgencmd display_power` needs no `$DISPLAY`, so it works from
+`pipui-web.service` running headless, and it doesn't conflict with
+`kiosk.sh`'s own `xset s off -dpms s noblank` (that disables X's screensaver
+so the dashboard never blanks on its own; this is a separate, lower-level
+knob on the actual display power).
+
+Powering off needs root. Add a passwordless-sudo rule for it, same pattern as
+the one `pipui-update.sh` already needs for restarting the service:
+
+```bash
+echo "$USER ALL=(root) NOPASSWD: /sbin/shutdown" | sudo tee /etc/sudoers.d/pipui-power
+sudo chmod 440 /etc/sudoers.d/pipui-power
+```
+
+Without that rule, the button still shows a clear error instead of doing
+nothing silently. There's no remote way to turn the Pi back on from the
+dashboard after a power-off -- you'll need to cut and restore power (or a
+smart plug / PoE cycle).
+
 
 https://docs.flipper.net/zero/sub-ghz/read
 https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/main/infrared/resources/infrared/assets/tv.ir
