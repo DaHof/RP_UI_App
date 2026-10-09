@@ -189,11 +189,16 @@ def _probe_sdr() -> tuple[str, str]:
 
 
 def _probe_proxmark() -> tuple[str, str]:
-    result = shell.run(["pm3", "--version"], timeout=4.0)
-    if result.ok:
-        first = result.stdout.splitlines()[0] if result.stdout else "pm3 present"
-        return PASS, first
-    return FAIL, result.detail
+    """Presence only, via the same /dev/ttyACM* scan pmweb.py uses for every
+    real command -- cheap enough for the FAST tier (no subprocess). The old
+    version ran `pm3 --version`, which only checks that the client *software*
+    is installed and says nothing about whether the device is plugged in, so
+    the dashboard never noticed a Proxmark3 being connected or disconnected."""
+    try:
+        import pmweb
+    except Exception as exc:
+        return UNKNOWN, f"Proxmark3 support not available: {exc}"
+    return (PASS, "Proxmark3 detected") if pmweb.find_port() else (FAIL, "No Proxmark3 detected")
 
 
 def _probe_msr605x() -> tuple[str, str]:
@@ -308,8 +313,8 @@ PROBES: tuple[Probe, ...] = (
     Probe("thermal", "CPU / Thermal", _probe_thermal, FAST),
     Probe("ir", "IR / LIRC", _probe_ir, FAST),
     Probe("msr605x", "MSR605X", _probe_msr605x, FAST),
+    Probe("proxmark", "Proxmark3", _probe_proxmark, FAST),
     Probe("sdr", "RTL-SDR", _probe_sdr, SLOW),
-    Probe("proxmark", "Proxmark3", _probe_proxmark, SLOW),
     Probe("bluetooth", "Bluetooth", _probe_bluetooth, SLOW),
     Probe("wifi", "Wi-Fi monitor", _probe_wifi, SLOW),
     Probe("wifiscan", "Wi-Fi scanner", _probe_wifiscan, FAST),
